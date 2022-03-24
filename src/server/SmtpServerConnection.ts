@@ -1,9 +1,10 @@
 import { EventEmitter } from "stream";
 import { Messages } from "../language/Messages";
-import { SmtpCapability } from "../shared/SmtpCapability";
+import { SmtpAuthType } from "../shared/SmtpAuth";
+import { SmtpCapability, SmtpCapabilityType } from "../shared/SmtpCapability";
 import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
-import { CAPABILITIES, MAX_INVALID_COMMANDS, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
-import { BadSequenceError, InvalidCommandArguments, InvalidCommandError, PolicyError } from "../shared/SmtpError";
+import { MAX_INVALID_COMMANDS, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
+import { BadSequenceError, CommandDisabled, InvalidCommandArguments, InvalidCommandError, PolicyError } from "../shared/SmtpError";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpMultipleLineRespons } from "../shared/SmtpMutipleLineResponse";
 import { SMTP_EMAIL_REGEX } from "../shared/SmtpRegexes";
@@ -12,6 +13,7 @@ import { SmtpDataBuffer } from "../shared/SmtpSegmentedReader";
 import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpSocket } from "../shared/SmtpSocket";
 import { SmtpServer } from "./SmtpServer";
+import { SmtpServerFeatureFlag } from "./SmtpServerConfig";
 import { SmtpServerMessageTarget, SmtpServerMessageTargetType } from "./SmtpServerMessageTarget";
 import { SmtpServerSession, SmtpServerSessionFlag } from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
@@ -94,8 +96,23 @@ export class SmtpServerConnection extends EventEmitter {
      * @param data the data.
      */
     protected async on_command(data: string): Promise<void> {
+        // Parses the command.
+        let command: SmtpCommand;
         try {
-            const command: SmtpCommand = SmtpCommand.decode(data);
+            command = SmtpCommand.decode(data);
+        } catch (e) {
+            if (e instanceof InvalidCommandError) {
+                this.smtp_socket.write(new SmtpResponse(550,
+                    Messages.general.command_invalid(this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+                return;
+            } else {
+                throw e;
+            }
+        }
+
+        // Handles the command.
+        try {
             switch (command.type) {
                 case SmtpCommandType.Quit:
                     await this._handle_quit(command);
@@ -149,16 +166,17 @@ export class SmtpServerConnection extends EventEmitter {
                 this.smtp_socket.write(new SmtpResponse(550,
                     Messages.general.policy_error(this),
                     new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-            } else if (e instanceof InvalidCommandError) {
-                this.smtp_socket.write(new SmtpResponse(550,
-                    Messages.general.command_invalid(this),
-                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
             } else if (e instanceof BadSequenceError) {
                 this.smtp_socket.write(new SmtpResponse(503, Messages.general.bad_sequence_of_commands(this),
                     new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
             } else if (e instanceof InvalidCommandArguments) {
                 this.smtp_socket.write(new SmtpResponse(503, Messages.general.invalid_arguments(this),
                     new SmtpEnhancedStatusCode(5, 5, 4)).encode(true));
+            } else if (e instanceof CommandDisabled) {
+                this.smtp_socket.write(new SmtpResponse(502, Messages.general.command_disabled(command.type, this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+            } else {
+                throw e;
             }
 
             // Close if too many errors.
@@ -226,6 +244,11 @@ export class SmtpServerConnection extends EventEmitter {
      * @param command the command.
      */
     protected async _handle_bdat(command: SmtpCommand): Promise<void> {
+        // Checks if the command is disabled.
+        if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Chunking)) {
+            throw new CommandDisabled();
+        }
+
         // Checks the flags to make sure we're allowed to execute this.
         if (!this.session.get_flags(SmtpServerSessionFlag.To | SmtpServerSessionFlag.From | SmtpServerSessionFlag.Introduced)) {
             // Not in the correct state yet.
@@ -418,11 +441,11 @@ export class SmtpServerConnection extends EventEmitter {
         SmtpMultipleLineRespons.write_line_callback(this.smtp_socket,
             new SmtpResponse(250, Messages.ehlo._(this)),
             (i: number): { v: string, n: boolean } => {
-                const capability: SmtpCapability = CAPABILITIES[i];
+                const capability: SmtpCapability = this.server.capabilities[i];
 
                 return {
                     v: capability.encode(),
-                    n: (i + 1) < CAPABILITIES.length
+                    n: (i + 1) < this.server.capabilities.length
                 };
             });
     }
@@ -551,6 +574,11 @@ export class SmtpServerConnection extends EventEmitter {
      * @param command the command.
      */
     public async _handle_vrfy(command: SmtpCommand): Promise<void> {
+        // Checks if the command is disabled.
+        if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Vrfy)) {
+            throw new CommandDisabled();
+        }
+
         // Makes sure there are arguments.
         if (!command.arguments) {
             this.smtp_socket.write(new SmtpResponse(501, Messages.vrfy.may_not_be_empty(this),
@@ -588,7 +616,6 @@ export class SmtpServerConnection extends EventEmitter {
 
             this.smtp_socket.write(new SmtpResponse(250, Messages.vrfy._(mailbox, this),
                 new SmtpEnhancedStatusCode(2, 1, 5)).encode(true));
-
             return;
         } else if (opening_bracket_index !== -1 || closing_bracket_index !== -1) {
             throw new SyntaxError('Closing or opening bracket missing!');

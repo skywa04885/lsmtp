@@ -1,14 +1,17 @@
 import net from 'net';
 import { EventEmitter } from 'stream';
 import tls from 'tls';
+import { SmtpAuthType } from '../shared/SmtpAuth';
+import { SmtpCapability, SmtpCapabilityType } from '../shared/SmtpCapability';
 import { SmtpSocket } from '../shared/SmtpSocket';
-import { SmtpServerConfig } from './SmtpServerConfig';
+import { SmtpServerConfig, SmtpServerFeatureFlag } from './SmtpServerConfig';
 import { SmtpServerConnection } from './SmtpServerConnection';
 import { SmtpServerSession } from './SmtpServerSession';
 
 export class SmtpServer extends EventEmitter {
     protected plain_server: net.Server | null;
     protected secure_server: tls.Server | null;
+    public capabilities: SmtpCapability[] = [];
 
     /**
      * Constructs a new SmtpServer.
@@ -25,6 +28,36 @@ export class SmtpServer extends EventEmitter {
 
         this.plain_server = null;
         this.secure_server = null;
+
+        // Generates the standard capabilities.
+        this.capabilities = [
+            new SmtpCapability(SmtpCapabilityType.SmtpEnhancedStatusCodes),
+            new SmtpCapability(SmtpCapabilityType.SmtpUTF8),
+            new SmtpCapability(SmtpCapabilityType.Pipelining)
+        ];
+
+        // Generates the capabilities based on the config.
+        if (this.config.size_limit) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Size, this.config.size_limit.toString()));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.Chunking)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Chunking));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.BinaryMime)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.BinaryMIME));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.Expn)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Expn));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.Vrfy)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Vrfy));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.EightBitMime)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.EightBitMIME));
+        }
+        if (this.config.feature_enabled(SmtpServerFeatureFlag.Auth)) {
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN.toString() ]));
+        }
     }
 
     /**

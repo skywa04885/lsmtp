@@ -49,6 +49,9 @@ export const Messages = {
         invalid_arguments: (connection: SmtpServerConnection): string => {
             return `Invalid arguments. ${SUFFIX}`
         },
+        command_disabled: (command_type: SmtpCommandType, connection: SmtpServerConnection): string => {
+            return `Command ${command_type} is disabled. ${SUFFIX}`;
+        },
     },
     quit: {
         _: (connection: SmtpServerConnection): string => {

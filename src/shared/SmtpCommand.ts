@@ -18,7 +18,6 @@ export enum SmtpCommandType {
     Saml = 'SAML',
     Soml = 'SOML',
     Send = 'SEND',
-    Wizard = 'WIZ',
     XClient = 'XCLIENT',
     XForward = 'XFORWARD',
 }

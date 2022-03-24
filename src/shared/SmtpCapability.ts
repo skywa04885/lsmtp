@@ -12,6 +12,7 @@ export enum SmtpCapabilityType {
     Size = 'SIZE',
     Auth = 'AUTH',
     Pipelining = 'PIPELINING',
+    BinaryMIME = 'BINARYMIME',
 }
 
 export class SmtpCapability {
