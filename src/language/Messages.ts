@@ -1,6 +1,6 @@
 import { SmtpServerConnection } from "../server/SmtpServerConnection";
 import { SmtpCommandType } from "../shared/SmtpCommand";
-import { HOSTNAME } from "../shared/SmtpConstants";
+import { HOSTNAME, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 
 export const SUFFIX = `${HOSTNAME} - lsmtp`;
@@ -13,11 +13,14 @@ export const Messages = {
     },
     data: {
         done: (connection: SmtpServerConnection): string => {
-            return `OK, received ${connection.session.data?.length} with the speed of ${connection.session.data_transmission_speed} bytes/second. ${SUFFIX}`;
+            return `OK, received ${connection.session.data?.length}. ${SUFFIX}`;
         },
         _: (connection: SmtpServerConnection): string => {
             return `OK, go ahead. ${SUFFIX}`;
-        }
+        },
+        too_large: (connection: SmtpServerConnection): string => {
+            return `Message size exceeded limit of ${MAX_MESSAGE_SIZE} bytes, terminating connection. ${SUFFIX}`;
+        },
     },
     general: {
         command_invalid: (connection: SmtpServerConnection): string => {
@@ -34,6 +37,9 @@ export const Messages = {
         },
         bad_sequence_of_commands: (connection: SmtpServerConnection): string => {
             return `Bad sequence of commands. ${SUFFIX}`;
+        },
+        invalid_arguments: (connection: SmtpServerConnection): string => {
+            return `Invalid arguments. ${SUFFIX}`
         },
     },
     quit: {

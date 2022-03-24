@@ -2,18 +2,19 @@ import { EventEmitter } from "stream";
 import { Messages } from "../language/Messages";
 import { SmtpCapability } from "../shared/SmtpCapability";
 import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
-import { CAPABILITIES, MAX_INVALID_COMMANDS } from "../shared/SmtpConstants";
-import { BadSequenceError, InvalidCommandError, PolicyError } from "../shared/SmtpError";
+import { CAPABILITIES, MAX_INVALID_COMMANDS, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
+import { BadSequenceError, InvalidCommandArguments, InvalidCommandError, PolicyError } from "../shared/SmtpError";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpMultipleLineRespons } from "../shared/SmtpMutipleLineResponse";
 import { SMTP_EMAIL_REGEX } from "../shared/SmtpRegexes";
 import { SmtpEnhancedStatusCode, SmtpResponse } from "../shared/SmtpResponse";
-import { SmtpSegmentedReader } from "../shared/SmtpSegmentedReader";
+import { SmtpDataBuffer } from "../shared/SmtpSegmentedReader";
 import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpSocket } from "../shared/SmtpSocket";
 import { SmtpServer } from "./SmtpServer";
 import { SmtpServerMessageTarget, SmtpServerMessageTargetType } from "./SmtpServerMessageTarget";
 import { SmtpServerSession } from "./SmtpServerSession";
+import { SmtpStream } from "./SmtpServerStream";
 
 /**
  * Parses an email from a MAIL, RCPT argument.
@@ -50,6 +51,7 @@ function __mail_rcpt_address_parse(raw: string, expected_keyword: string): strin
 }
 
 export class SmtpServerConnection extends EventEmitter {
+    protected stream: SmtpStream;
     public udata: any;
 
     /**
@@ -57,7 +59,12 @@ export class SmtpServerConnection extends EventEmitter {
      * @param pop_sock the socket.
      */
     public constructor(public readonly server: SmtpServer, public readonly smtp_socket: SmtpSocket, public session: SmtpServerSession) {
+        // Calls the super.
         super();
+
+        // Creates the stream.
+        this.stream = new SmtpStream({}, (data: string) => this.on_binary_data(data), (data: string) => this.on_command(data), (data: string) => this.on_data(data), () => this.on_data_max_reached());
+        this.smtp_socket.socket.pipe(this.stream);
 
         // Registers the event listeners.
         this.smtp_socket.on('close', (had_error: boolean) => this._event_close(had_error));
@@ -68,21 +75,11 @@ export class SmtpServerConnection extends EventEmitter {
      * @returns ourselves.
      */
     public async begin(): Promise<void> {
+
+
         // Sends the greeting.
         this.smtp_socket.write(new SmtpResponse(220,
             Messages.greeting._(this)).encode(true));
-
-        // Adds the data event listener.
-        let segmented_reader: SmtpSegmentedReader = new SmtpSegmentedReader();
-        segmented_reader.on('segment', async (segment: string) => {
-            this._handle_line(segment);
-        });
-
-        this.smtp_socket.on('data', (chunk: Buffer) => {
-            this.smtp_socket.pause();
-            segmented_reader.write(chunk.toString('utf-8'));
-            this.smtp_socket.resume();
-        });
     }
 
     /**
@@ -93,122 +90,119 @@ export class SmtpServerConnection extends EventEmitter {
     }
 
     /**
-     * Handles a single line.
-     * @param line the line available for reading.
+     * Gets called when an command is send.
+     * @param data the data.
      */
-    protected async _handle_line(line: string): Promise<void> {
-        switch (this.session.state) {
-            ///////////////////////////////////////
-            // [Switch] Data State
-            case SmtpSessionState.Data: {
-                await this._handle_data_line(line);
-                break;
+    protected async on_command(data: string): Promise<void> {
+        try {
+            const command: SmtpCommand = SmtpCommand.decode(data);
+            switch (command.type) {
+                case SmtpCommandType.Quit:
+                    await this._handle_quit(command);
+                    break;
+                case SmtpCommandType.Noop:
+                    this._handle_noop(command);
+                    break;
+                case SmtpCommandType.Help:
+                    await this._handle_help(command);
+                    break;
+                case SmtpCommandType.Helo:
+                    await this._handle_helo(command);
+                    break;
+                case SmtpCommandType.Ehlo:
+                    await this._handle_ehlo(command);
+                    break;
+                case SmtpCommandType.Mail:
+                    await this._handle_mail(command);
+                    break;
+                case SmtpCommandType.Rcpt:
+                    await this._handle_rcpt(command);
+                    break;
+                case SmtpCommandType.Rcpt:
+                    await this._handle_rset(command);
+                    break;
+                case SmtpCommandType.Vrfy:
+                    await this._handle_vrfy(command);
+                    break;
+                case SmtpCommandType.Data:
+                    await this._handle_data(command);
+                    break;
+                case SmtpCommandType.Rset:
+                    await this._handle_rset(command);
+                    break;
+                default:
+                    this.smtp_socket.write(new SmtpResponse(502,
+                        Messages.general.command_not_implemented(command.type, this),
+                        new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+                    break;
             }
-            ///////////////////////////////////////
-            ///////////////////////////////////////
-            // [Switch] Command State
-            ///////////////////////////////////////
-            case SmtpSessionState.Command: {
-                try {
-                    const command: SmtpCommand = SmtpCommand.decode(line);
-                    switch (command.type) {
-                        case SmtpCommandType.Quit:
-                            await this._handle_quit(command);
-                            break;
-                        case SmtpCommandType.Noop:
-                            this._handle_noop(command);
-                            break;
-                        case SmtpCommandType.Help:
-                            await this._handle_help(command);
-                            break;
-                        case SmtpCommandType.Helo:
-                            await this._handle_helo(command);
-                            break;
-                        case SmtpCommandType.Ehlo:
-                            await this._handle_ehlo(command);
-                            break;
-                        case SmtpCommandType.Mail:
-                            await this._handle_mail(command);
-                            break;
-                        case SmtpCommandType.Rcpt:
-                            await this._handle_rcpt(command);
-                            break;
-                        case SmtpCommandType.Rcpt:
-                            await this._handle_rset(command);
-                            break;
-                        case SmtpCommandType.Vrfy:
-                            await this._handle_vrfy(command);
-                            break;
-                        case SmtpCommandType.Data:
-                            await this._handle_data(command);
-                            break;
-                        case SmtpCommandType.Rset:
-                            await this._handle_rset(command);
-                            break;
-                        default:
-                            this.smtp_socket.write(new SmtpResponse(502,
-                                Messages.general.command_not_implemented(command.type, this),
-                                new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                            break;
-                    }
-                } catch (e) {
-                    if (this.server.config.verbose) {
-                        console.error(e);
-                    }
-        
-                    if (e instanceof SyntaxError) {
-                        this.smtp_socket.write(new SmtpResponse(500,
-                            Messages.general.syntax_error(this),
-                            new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                        this.smtp_socket.close();
-                    } else if (e instanceof PolicyError) {
-                        this.smtp_socket.write(new SmtpResponse(550,
-                            Messages.general.policy_error(this),
-                            new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                    } else if (e instanceof InvalidCommandError) {
-                        this.smtp_socket.write(new SmtpResponse(550,
-                            Messages.general.command_invalid(this),
-                            new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                    } else if (e instanceof BadSequenceError) {
-                        this.smtp_socket.write(new SmtpResponse(503, Messages.general.bad_sequence_of_commands(this),
-                            new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                    }
-        
-                    // Close if too many errors.
-                    if (++this.session.invalid_command_count > MAX_INVALID_COMMANDS) {
-                        this.smtp_socket.close();
-                    }
-                }
+        } catch (e) {
+            if (e instanceof SyntaxError) {
+                this.smtp_socket.write(new SmtpResponse(500,
+                    Messages.general.syntax_error(this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+                this.smtp_socket.close();
+            } else if (e instanceof PolicyError) {
+                this.smtp_socket.write(new SmtpResponse(550,
+                    Messages.general.policy_error(this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+            } else if (e instanceof InvalidCommandError) {
+                this.smtp_socket.write(new SmtpResponse(550,
+                    Messages.general.command_invalid(this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+            } else if (e instanceof BadSequenceError) {
+                this.smtp_socket.write(new SmtpResponse(503, Messages.general.bad_sequence_of_commands(this),
+                    new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
+            } else if (e instanceof InvalidCommandArguments) {
+                this.smtp_socket.write(new SmtpResponse(503, Messages.general.invalid_arguments(this),
+                    new SmtpEnhancedStatusCode(5, 5, 4)).encode(true));
+            }
+
+            // Close if too many errors.
+            if (++this.session.invalid_command_count > MAX_INVALID_COMMANDS) {
+                this.smtp_socket.close();
             }
         }
     }
 
     /**
-     * Handles a single line of data.
-     * @param line the line of data.
+     * Gets called when an data reception is done.
+     * @param data the data.
      */
-    protected async _handle_data_line(line: string): Promise<void> {
-        // Checks if we're dealing with an escaped dot or regular data.
-        if (line === '..') { // Line with escaped dot, remove one dot and add to body.
-            this.session.append_data_line('.');
-            return;
-        } else if (line !== '.') { // Regular Data.
-            this.session.append_data_line(line);
-            return;
-        }
+    protected async on_data(data: string): Promise<void> {
+        // Sets the stream mode back to command.
+        this.stream.enter_command_mode();
 
-        // Ends the data transmission.
-        this.session.end_data_transmission();
+        // Sets the data in the session.
+        this.session.data = data;
 
-        // Sends the ok.
+        // Sends the response.
         this.smtp_socket.write(new SmtpResponse(250, Messages.data.done(this),
             new SmtpEnhancedStatusCode(2, 0, 0)).encode(true));
     }
 
+    /**
+     * Gets called when the max data length is reached.
+     */
+    protected async on_data_max_reached(): Promise<void> {
+        // Sends the response and closes the socket.
+        this.smtp_socket.write(new SmtpResponse(552, Messages.data.too_large(this),
+            new SmtpEnhancedStatusCode(2, 0, 0)).encode(true));
+        this.smtp_socket.close();
+    }
+
+    protected async on_binary_data(data: string): Promise<void> {
+
+    }
+
+    /**
+     * Handles the data command.
+     * @param command the command.
+     */
     protected async _handle_data(command: SmtpCommand): Promise<void> {
         // Makes sure it doesn't have arguments.
         if (command.arguments) {
-            throw new SyntaxError(`${SmtpCommandType.Data} has no arguments.`);
+            throw new InvalidCommandArguments();
         }
 
         // Make sure there is no data yet.
@@ -216,8 +210,8 @@ export class SmtpServerConnection extends EventEmitter {
             throw new BadSequenceError();
         }
 
-        // Starts the data transmission.
-        this.session.start_data_transmission();
+        // Sets the stream mode to data mode.
+        this.stream.enter_data_mode(MAX_MESSAGE_SIZE);
 
         // Sends the signal to start.
         this.smtp_socket.write(new SmtpResponse(354, Messages.data._(this),
@@ -231,7 +225,7 @@ export class SmtpServerConnection extends EventEmitter {
     protected async _handle_quit(command: SmtpCommand): Promise<void> {
         // Makes sure it doesn't have arguments.
         if (command.arguments) {
-            throw new SyntaxError(`${SmtpCommandType.Quit} has no arguments.`);
+            throw new InvalidCommandArguments();
         }
 
         // Writes the response.
@@ -249,7 +243,7 @@ export class SmtpServerConnection extends EventEmitter {
     protected async _handle_noop(command: SmtpCommand): Promise<void> {
         // Makes sure it doesn't have arguments.
         if (command.arguments) {
-            throw new SyntaxError(`${SmtpCommandType.Noop} has no arguments.`);
+            throw new InvalidCommandArguments();
         }
 
         // Writes the response.
@@ -264,7 +258,7 @@ export class SmtpServerConnection extends EventEmitter {
     protected async _handle_help(command: SmtpCommand): Promise<void> {
         // Makes sure it doesn't have arguments.
         if (command.arguments) {
-            throw new SyntaxError(`${SmtpCommandType.Help} has no arguments.`);
+            throw new InvalidCommandArguments();
         }
 
         // Writes the response.
@@ -447,7 +441,7 @@ export class SmtpServerConnection extends EventEmitter {
     protected async _handle_rset(command: SmtpCommand) {
         // Makes sure it doesn't have arguments.
         if (command.arguments) {
-            throw new SyntaxError(`${SmtpCommandType.Rset} has no arguments.`);
+            throw new InvalidCommandArguments();
         }
 
         // Resets the state.

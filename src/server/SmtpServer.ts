@@ -20,7 +20,7 @@ export class SmtpServer extends EventEmitter {
      * @param timeout the timeout of sockets in ms.
      */
     public constructor(public readonly config: SmtpServerConfig, public readonly hostname: string = '0.0.0.0', public readonly plain_port: number = 25,
-        public readonly secure_port: number = 465, public readonly backlog: number = 500, public readonly timeout: number = 1000 * 60) {
+        public readonly secure_port: number = 465, public readonly backlog: number = 500, public readonly timeout: number = 5 * 1000 * 60) {
         super();
 
         this.plain_server = null;
