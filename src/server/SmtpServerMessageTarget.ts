@@ -1,9 +1,10 @@
-import { PolicyError } from "../shared/SmtpException";
-import { SMTP_EMAIL_REGEX } from "../shared/SmtpRegexes";
+import { PolicyError } from "../shared/SmtpError";
+import { SMTP_EMAIL_REGEX, SMTP_RELAY_TARGET_REGEX } from "../shared/SmtpRegexes";
 
 export enum SmtpServerMessageTargetType {
-    Mailbox = 'MAILBOX',
-    Relay = 'RELAY',
+    Local = 'LOCAL',        // If it will be stored locally, the user is local.
+    Remote = 'REMOTE',      // If we need to send the email, only if authenticated.
+    Relay = 'RELAY',        // If we need to relay the email
 }
 
 export class SmtpServerMessageTarget {
@@ -13,43 +14,90 @@ export class SmtpServerMessageTarget {
      * COnstructs a new SmtpServerMessageTarget.
      * @param type the type of target.
      * @param address the address of target.
-     * @param host the possible relay host.
+     * @param relay_to the possible relay host.
      */
     public constructor(public type: SmtpServerMessageTargetType,
         public readonly address: string,
-        public readonly host: string | null = null) { }
+        public readonly relay_to: string | null = null) { }
     
-    public static decode(raw: string): SmtpServerMessageTarget[] {
-        let relay_to: string | null = null;
-
+    
+    /**
+     * Decodes an address with relay target, for example '@asd.com:user@asd.com'
+     * @param raw the raw address.
+     * @returns the decoded address.
+     */
+    protected static decode_address_with_relay_target(raw: string): SmtpServerMessageTarget {
         // Trims just to be sure.
         raw = raw.trim();
 
-        // Loops over all the segments.
-        const raw_segments: string[] = raw.split(this.ADDRESS_SEPARATOR);
-        return raw_segments.map((segment: string, index: number): SmtpServerMessageTarget => {
-            // Trims just to be sure.
-            segment = segment.trim();
+        // Splits at the colon.
+        const raw_splitted: string[] = raw.split(':');
+        if (raw_splitted.length !== 2) {
+            throw new SyntaxError('Invalid relay syntax.');
+        }
 
-            // Gets the split index, if not there throw error.
-            const split_index: number = segment.indexOf('@');
-            if (split_index === -1) {
-                throw new Error(`Invalid message target '${segment}'`);
+        // Gets the relay to and address.
+        const[ relay_to, address ] = raw_splitted;
+
+        // Validates the relay to and the address.
+        if (!relay_to.match(SMTP_RELAY_TARGET_REGEX)) {
+            throw new SyntaxError('Invalid relay target.');
+        } else if (!address.match(SMTP_EMAIL_REGEX)) {
+            throw new SyntaxError('Invalid address.');
+        }
+
+        // Returns the target.
+        return new SmtpServerMessageTarget(SmtpServerMessageTargetType.Relay, address, relay_to);
+    }
+
+    /**
+     * 
+     * @param raw the raw target.
+     * @returns the decoded target.
+     */
+    public static decode(raw: string): SmtpServerMessageTarget {
+        // Trims just to be sure.
+        raw = raw.trim();
+
+        // Checks if there is a comma, if so we need to check for relay info.
+        if (!raw.includes(',')) {
+            // Checks if we have an ':' if so there still might be an relay target.
+            if (!raw.includes(':')) {
+                // Checks if it matches the email regexp.
+                if (!raw.match(SMTP_EMAIL_REGEX)) {
+                    throw new SyntaxError(`Address '${raw}' is not valid.`);
+                }
+
+                // Returns the mailbox.
+                return new SmtpServerMessageTarget(SmtpServerMessageTargetType.Local, raw);
             }
 
-            // If the split index === 0 we're dealing with a relay target.
-            if (split_index === 0) {
-                throw new PolicyError('Relay targets are not supported.');
-                return;
-            }
-            
-            // We're not dealing with a relay target, check if it is an valid address.
-            if (!segment.match(SMTP_EMAIL_REGEX)) {
-                throw new Error(`Invalid mailbox target: '${segment}'`);
-            }
+            // Splits at the colon.
+            return this.decode_address_with_relay_target(raw);
+        }
 
-            // Returns the target.
-            return new SmtpServerMessageTarget(SmtpServerMessageTargetType.Mailbox, segment);
-        });
+        // Splits at the comma.
+        const raw_splitted: string[] = raw.split(',');
+        if (raw_splitted.length !== 2) {
+            throw new SyntaxError('Invalid relay syntax.');
+        }
+
+        // Gets the relay to and the address.
+        const [ relay_to, address ] = raw_splitted;
+
+        // Checks if the address has a ':' if so it will have higher priority.
+        if (address.includes(':')) {
+            return this.decode_address_with_relay_target(address);
+        }
+
+        // Makes sure the address and relay target are valid.
+        if (!relay_to.match(SMTP_RELAY_TARGET_REGEX)) {
+            throw new SyntaxError('Invalid relay target.');
+        } else if (!address.match(SMTP_EMAIL_REGEX)) {
+            throw new SyntaxError('Invalid address.');
+        }
+
+        // Returns the result.
+        return new SmtpServerMessageTarget(SmtpServerMessageTargetType.Relay, address, relay_to);
     }
 }

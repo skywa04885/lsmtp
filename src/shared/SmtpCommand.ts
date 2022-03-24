@@ -1,4 +1,5 @@
 import { SEGMENT_SEPARATOR } from './SmtpConstants';
+import { InvalidCommandError } from './SmtpError';
 
 export enum SmtpCommandType {
     Helo = 'HELO',
@@ -17,6 +18,9 @@ export enum SmtpCommandType {
     Saml = 'SAML',
     Soml = 'SOML',
     Send = 'SEND',
+    Wizard = 'WIZ',
+    XClient = 'XCLIENT',
+    XForward = 'XFORWARD',
 }
 
 export class SmtpCommand {
@@ -74,7 +78,7 @@ export class SmtpCommand {
         }
 
         if (!Object.values(SmtpCommandType).includes(raw_type as SmtpCommandType)) {
-            throw new Error('Invalid command type.');
+            throw new InvalidCommandError('Invalid command type.');
         }
 
         return new SmtpCommand(raw_type as SmtpCommandType, raw_args);

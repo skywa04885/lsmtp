@@ -1,6 +1,7 @@
 import { SmtpServerConnection } from "../server/SmtpServerConnection";
 import { SmtpCommandType } from "../shared/SmtpCommand";
 import { HOSTNAME } from "../shared/SmtpConstants";
+import { SmtpMailbox } from "../shared/SmtpMailbox";
 
 export const SUFFIX = `${HOSTNAME} - lsmtp`;
 
@@ -20,6 +21,9 @@ export const Messages = {
         syntax_error: (connection: SmtpServerConnection): string => {
             return `Syntax error. ${SUFFIX}`;
         },
+        policy_error: (connection: SmtpServerConnection): string => {
+            return `Policy error. ${SUFFIX}`;
+        },
         bad_sequence_of_commands: (connection: SmtpServerConnection): string => {
             return `Bad sequence of commands. ${SUFFIX}`;
         },
@@ -30,6 +34,11 @@ export const Messages = {
         },
     },
     noop: {
+        _: (connection: SmtpServerConnection): string => {
+            return `OK. ${SUFFIX}`;
+        },
+    },
+    rset: {
         _: (connection: SmtpServerConnection): string => {
             return `OK. ${SUFFIX}`;
         },
@@ -64,13 +73,27 @@ export const Messages = {
             return `Rejected. ${SUFFIX}`;
         },
     },
+    vrfy: {
+        _: (mailbox: SmtpMailbox, connection: SmtpServerConnection): string => {
+            return `${mailbox.encode()} ${SUFFIX}`;
+        },
+        may_not_be_empty: (connection: SmtpServerConnection): string => {
+            return `Empty ${SmtpCommandType.Vrfy} argument not allowed, closing connection. ${SUFFIX}`;
+        },
+        ambiguous: (address_or_name: string, connection: SmtpServerConnection): string => {
+            return `${address_or_name} is ambiguous. ${SUFFIX}`;
+        },
+        mailbox_unavailable: (connection: SmtpServerConnection): string => {
+            return `Mailbox unavailable, ${SUFFIX}`
+        },
+    },
     rcpt: {
         _: (connection: SmtpServerConnection): string => {
             if (!connection.session.to) {
                 throw new Error('No to array set.');
             }
 
-            return `OK ${connection.session.to[connection.session.to.length - 1]} ${SUFFIX}`;
+            return `OK ${connection.session.to[connection.session.to.length - 1].address} ${SUFFIX}`;
         },
         may_not_be_empty: (connection: SmtpServerConnection): string => {
             return `Empty ${SmtpCommandType.Rcpt} argument not allowed, closing connection. ${SUFFIX}`;
