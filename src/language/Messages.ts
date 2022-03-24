@@ -11,6 +11,14 @@ export const Messages = {
             return `${connection.server.config.domain} ESMTP ${SUFFIX}`
         },
     },
+    data: {
+        done: (connection: SmtpServerConnection): string => {
+            return `OK, received ${connection.session.data?.length} with the speed of ${connection.session.data_transmission_speed} bytes/second. ${SUFFIX}`;
+        },
+        _: (connection: SmtpServerConnection): string => {
+            return `OK, go ahead. ${SUFFIX}`;
+        }
+    },
     general: {
         command_invalid: (connection: SmtpServerConnection): string => {
             return `command not recognized. ${SUFFIX}`;

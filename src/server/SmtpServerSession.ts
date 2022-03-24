@@ -1,3 +1,4 @@
+import { LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
@@ -9,6 +10,9 @@ export class SmtpServerSession {
     public from: string | null = null;
     public to: SmtpServerMessageTarget[] | null = null;
     public state: SmtpSessionState = STATE_RESET;
+    public data: string | null = null;
+    public data_transmission_start_us: number | null = null;
+    public data_transmission_end_us: number | null = null;
 
     public constructor() { }
 
@@ -28,11 +32,59 @@ export class SmtpServerSession {
     }
 
     /**
+     * Appends a line to the data.
+     * @param line the line to append.
+     */
+    public append_data_line(line: string): void {
+        if (!this.data) {
+            throw new Error('Data transmission is not started yet.');
+        }
+
+        this.data += `${line}${LINE_SEPARATOR}`;
+    }
+
+    /**
+     * Starts the data transmission.
+     */
+    public start_data_transmission(): void {
+        // Sets the state.
+        this.state = SmtpSessionState.Data;
+
+        // Initializes the data string.
+        this.data = '';
+
+        // Gets the start time.
+        const hr_time = process.hrtime();
+        this.data_transmission_start_us = hr_time[0] * 1000000 + hr_time[1] / 1000;
+    }
+    
+    /**
+     * Ends the data transmission.
+     */
+    public end_data_transmission(): void {
+        // Sets the state.
+        this.state = SmtpSessionState.Command;
+
+        // Gets the end time.
+        const hr_time = process.hrtime();
+        this.data_transmission_end_us = hr_time[0] * 1000000 + hr_time[1] / 1000;
+    }
+
+    /**
+     * Gets the data transmission speed in bytes/sec.
+     */
+    public get data_transmission_speed(): number {
+        const seconds: number = ((this.data_transmission_end_us as number) - (this.data_transmission_start_us as number)) / 1000000;
+        return (this.data as string).length / seconds;
+    }
+
+    /**
      * Performs the soft session reset, in this case this simply means clearing some state data.
      */
     public soft_reset(): void {
         this.from = null;
         this.to = null;
+        this.data = null;
     }
 
     /**
@@ -42,5 +94,6 @@ export class SmtpServerSession {
         this.client_domain = null;
         this.from = null;
         this.to = null;
+        this.data = null;
     }
 }
