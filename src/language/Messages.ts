@@ -13,13 +13,21 @@ export const Messages = {
     },
     data: {
         done: (connection: SmtpServerConnection): string => {
-            return `OK, received ${connection.session.data?.length}. ${SUFFIX}`;
+            return `OK, received ${connection.session.data?.length} bytes. ${SUFFIX}`;
         },
         _: (connection: SmtpServerConnection): string => {
             return `OK, go ahead. ${SUFFIX}`;
         },
         too_large: (connection: SmtpServerConnection): string => {
             return `Message size exceeded limit of ${MAX_MESSAGE_SIZE} bytes, terminating connection. ${SUFFIX}`;
+        },
+    },
+    bdat: {
+        _: (size: number, connection: SmtpServerConnection): string => {
+            return `OK, received ${size} bytes. ${SUFFIX}`;
+        },
+        done: (connection: SmtpServerConnection): string => {
+            return `OK, received ${connection.session.data?.length} bytes. ${SUFFIX}`;
         },
     },
     general: {

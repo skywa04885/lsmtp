@@ -11,6 +11,7 @@ export const MAX_MESSAGE_SIZE: number = 1024 * 1024 * 10; // 10Mb
 export const CAPABILITIES: SmtpCapability[] = [
     new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN.toString() ]),
     new SmtpCapability(SmtpCapabilityType.EightBitMIME),
+    new SmtpCapability(SmtpCapabilityType.Chunking),
     new SmtpCapability(SmtpCapabilityType.Expn),
     new SmtpCapability(SmtpCapabilityType.Help),
     new SmtpCapability(SmtpCapabilityType.Size, [ MAX_MESSAGE_SIZE.toString() ]),
