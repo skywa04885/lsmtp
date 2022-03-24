@@ -1,7 +1,9 @@
 import { TLSSocketOptions } from "tls";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
+import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServerConnection } from "./SmtpServerConnection";
 import { SmtpServerMail } from "./SmtpServerMail";
+import { XOATH2Token } from 'lxoauth2/dist/XOAUTH2Token';
 
 export enum SmtpServerFeatureFlag {
     Chunking = (1 << 0),            // Chunking and BinaryMIME.
@@ -21,6 +23,9 @@ export class SmtpServerConfig {
         public readonly verify_name: (name: string, connection: SmtpServerConnection) => Promise<SmtpMailbox[]>,
         public readonly verify_mailbox: (mailbox: string, connection: SmtpServerConnection) => Promise<SmtpMailbox | null>,
         public readonly handle_mail: (mail: SmtpServerMail, connection: SmtpServerConnection) => Promise<Error | null>,
+        public readonly get_user: (user: string, connection: SmtpServerConnection) => Promise<SmtpUser | null>,
+        public readonly password_compare: (pass: string, hash: string) => Promise<boolean>,
+        public readonly verify_xoath2: (token: XOATH2Token, connection: SmtpServerConnection) => Promise<SmtpUser | null>,
         public readonly domain: string,
         public readonly enabled_features: number,
         public readonly size_limit: number | null,

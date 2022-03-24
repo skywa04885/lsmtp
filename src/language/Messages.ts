@@ -11,6 +11,14 @@ export const Messages = {
             return `${connection.server.config.domain} ESMTP ${SUFFIX}`
         },
     },
+    auth: {
+        _: (connection: SmtpServerConnection): string => {
+            return `Authentication successful. ${SUFFIX}`;
+        },
+        bad_credentials: (connection: SmtpServerConnection): string => {
+            return `Bad credentials. ${SUFFIX}`;
+        },
+    },
     data: {
         done: (connection: SmtpServerConnection): string => {
             return `OK, received ${connection.session.data?.length} bytes. ${SUFFIX}`;

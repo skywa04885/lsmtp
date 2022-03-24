@@ -56,7 +56,7 @@ export class SmtpServer extends EventEmitter {
             this.capabilities.push(new SmtpCapability(SmtpCapabilityType.EightBitMIME));
         }
         if (this.config.feature_enabled(SmtpServerFeatureFlag.Auth)) {
-            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN ]));
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN, SmtpAuthType.XOAUTH2 ]));
         }
     }
 

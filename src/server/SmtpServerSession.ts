@@ -1,5 +1,6 @@
 import { LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpSessionState } from "../shared/SmtpSession";
+import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
@@ -24,6 +25,7 @@ export class SmtpServerSession {
     public to: SmtpServerMessageTarget[] | null = null;
     public state: SmtpSessionState = STATE_RESET;
     public data: string | null = null;
+    public user: SmtpUser | null = null;
 
     public flags: number = 0x0000000000;
 
@@ -52,6 +54,7 @@ export class SmtpServerSession {
         this.from = null;
         this.to = null;
         this.data = null;
+        this.user = null
 
         // Updates the flags.
         this.clear_flags(SmtpServerSessionFlag.Authenticated
@@ -73,6 +76,7 @@ export class SmtpServerSession {
         this.from = null;
         this.to = null;
         this.data = null;
+        this.user = null;
 
         // Updates the flags.
         this.clear_flags(SmtpServerSessionFlag.Authenticated

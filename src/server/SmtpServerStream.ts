@@ -7,6 +7,7 @@ export enum SmtpStreamMode {
     Command = 'COMMAND',
     Data = 'DATA',
     BinaryData = 'BDAT',
+    Line = 'LINE',
 }
 
 export class SmtpStream extends Writable {
@@ -14,6 +15,7 @@ export class SmtpStream extends Writable {
     protected _mode: SmtpStreamMode = SmtpStreamMode.Command;
     protected _data_max_length: number | null = null;
     protected _binary_expected_length: number | null = null;
+    protected _line_identifier: number | string | null = null;
 
     /**
      * Constructs a new SMTP stream.
@@ -23,7 +25,8 @@ export class SmtpStream extends Writable {
         public readonly on_binary_data: (data: string) => Promise<void>,
         public readonly on_command: (data: string) => Promise<void>,
         public readonly on_data: (data: string) => Promise<void>,
-        public readonly on_data_max_reached: () => Promise<void>) {
+        public readonly on_data_max_reached: () => Promise<void>,
+        public readonly on_line: (data: string, identifier: string | number | null) => Promise<void>) {
         super(options);
     }
 
@@ -32,8 +35,6 @@ export class SmtpStream extends Writable {
      */
     public enter_command_mode(): void {
         this._mode = SmtpStreamMode.Command;
-        this._binary_expected_length = null;
-        this._data_max_length = null;
     }
 
     /**
@@ -42,7 +43,6 @@ export class SmtpStream extends Writable {
      */
     public enter_data_mode(max_length: number | null = null): void {
         this._mode = SmtpStreamMode.Data;
-        this._binary_expected_length = null;
         this._data_max_length = max_length;
     }
 
@@ -53,7 +53,15 @@ export class SmtpStream extends Writable {
     public enter_bdat_mode(expected_size: number): void {
         this._mode = SmtpStreamMode.BinaryData;
         this._binary_expected_length = expected_size;
-        this._data_max_length = null;
+    }
+
+    /**
+     * Enters line mode, this is used for stupid AUTH crap.
+     * @param identifier the identifier.
+     */
+    public enter_line_mode(identifier: string | number | null = null) {
+        this._mode = SmtpStreamMode.Line;
+        this._line_identifier = identifier;
     }
 
     /**
@@ -84,6 +92,9 @@ export class SmtpStream extends Writable {
             case SmtpStreamMode.Command:
                 await this._handle_command_write();
                 break;
+            case SmtpStreamMode.Line:
+                await this._handle_line_write();
+                break;
             default:
                 next(new Error('Stream in invalid state.'));
                 break;
@@ -91,6 +102,20 @@ export class SmtpStream extends Writable {
 
         // Goes to the next chunk.
         next();
+    }
+
+    /**
+     * Handles a line write.
+     */
+    protected async _handle_line_write(): Promise<void> {
+        // Reads the segment, and if not there just return.
+        let segment: string | null;
+        if ((segment = this._buffer.segment(LINE_SEPARATOR)) === null) {
+            return;
+        }
+
+        // We've read the data segment.
+        await this.on_line(segment, this._line_identifier);
     }
 
     /**
@@ -127,7 +152,7 @@ export class SmtpStream extends Writable {
         if ((segment = this._buffer.segment(DATA_END, -2 /* -2, preserved '\r\n' */)) === null) {
             return;
         }
-        
+
         // We've read the data segment.
         await this.on_data(segment)
     }

@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@types/node": "^17.0.22"
+  },
+  "dependencies": {
+    "lxoauth2": "^1.0.3"
   }
 }

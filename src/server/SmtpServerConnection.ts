@@ -1,3 +1,4 @@
+import { XOATH2Token } from "lxoauth2/dist/XOAUTH2Token";
 import { EventEmitter } from "stream";
 import { Messages } from "../language/Messages";
 import { SmtpAuthType } from "../shared/SmtpAuth";
@@ -9,15 +10,46 @@ import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpMultipleLineRespons } from "../shared/SmtpMutipleLineResponse";
 import { SMTP_EMAIL_REGEX } from "../shared/SmtpRegexes";
 import { SmtpEnhancedStatusCode, SmtpResponse } from "../shared/SmtpResponse";
-import { SmtpDataBuffer } from "../shared/SmtpSegmentedReader";
-import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpSocket } from "../shared/SmtpSocket";
+import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServer } from "./SmtpServer";
 import { SmtpServerFeatureFlag } from "./SmtpServerConfig";
 import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
 import { SmtpServerMessageTarget, SmtpServerMessageTargetType } from "./SmtpServerMessageTarget";
 import { SmtpServerSession, SmtpServerSessionFlag } from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
+
+export const enum SmtpServerConnectionLineIdentifier {
+    AuthenticationPlain = 0,
+    AuthenticationXOAUTH2 = 1
+}
+
+/**
+ * Parses an PLAIN auth string.
+ * @param base64 the base64 string.
+ * @returns the array with [user, pass].
+ */
+function __auth_plain_parse(base64: string): string[] {
+    // Decodes the base64 string.
+    let decoded: string = Buffer.from(base64, 'base64').toString('utf-8');
+
+    // Makes sure the first char is '\x00';
+    if (!decoded.startsWith('\x00')) {
+        throw new InvalidCommandArguments('Does not start with null terminator.');
+    }
+
+    // Removes the first char.
+    decoded = decoded.substring(1);
+
+    // Splits the decoded string at '\x00', and makes sure there are two.
+    const segments: string[] = decoded.split('\x00');
+    if (segments.length !== 2) {
+        throw new InvalidCommandArguments('Invalid segment count.');
+    }
+
+    // Returns both segments.
+    return segments;
+}
 
 /**
  * Parses an email from a MAIL, RCPT argument.
@@ -38,12 +70,12 @@ function __mail_rcpt_address_parse(raw: string, expected_keyword: string): strin
 
     // Makes sure the keyword is valid.
     if (keyword.toUpperCase() !== expected_keyword.toUpperCase()) {
-        throw new SyntaxError(`Keyword mismatch, expected ${expected_keyword.toUpperCase()} got ${keyword.toUpperCase()}`);
+        throw new InvalidCommandArguments(`Keyword mismatch, expected ${expected_keyword.toUpperCase()} got ${keyword.toUpperCase()}`);
     }
 
     // Makes sure the address has the valid format.
     if (!address.startsWith('<') || !address.endsWith('>')) {
-        throw new SyntaxError('Address is not enclosed in \'<\' and \'>\'.');
+        throw new InvalidCommandArguments('Address is not enclosed in \'<\' and \'>\'.');
     }
 
     // Trims the brackets.
@@ -66,7 +98,11 @@ export class SmtpServerConnection extends EventEmitter {
         super();
 
         // Creates the stream.
-        this.stream = new SmtpStream({}, (data: string) => this.on_binary_data(data), (data: string) => this.on_command(data), (data: string) => this.on_data(data), () => this.on_data_max_reached());
+        this.stream = new SmtpStream({}, (data: string) => this.on_binary_data(data),
+            (data: string) => this.on_command(data),
+            (data: string) => this.on_data(data),
+            () => this.on_data_max_reached(),
+            (data: string, identifier: string | number | null) => this.on_line(data, identifier));
         this.smtp_socket.socket.pipe(this.stream);
 
         // Registers the event listeners.
@@ -175,6 +211,9 @@ export class SmtpServerConnection extends EventEmitter {
                 case SmtpCommandType.Bdat:
                     await this._handle_bdat(command);
                     break;
+                case SmtpCommandType.Auth:
+                    await this._handle_auth(command);
+                    break;
                 default:
                     this.smtp_socket.write(new SmtpResponse(502,
                         Messages.general.command_not_implemented(command.type, this),
@@ -182,6 +221,8 @@ export class SmtpServerConnection extends EventEmitter {
                     break;
             }
         } catch (e) {
+            console.log(e);
+
             if (e instanceof SyntaxError) {
                 this.smtp_socket.write(new SmtpResponse(500,
                     Messages.general.syntax_error(this),
@@ -207,6 +248,88 @@ export class SmtpServerConnection extends EventEmitter {
             // Close if too many errors.
             if (++this.session.invalid_command_count > MAX_INVALID_COMMANDS) {
                 this.smtp_socket.close();
+            }
+        }
+    }
+
+    /**
+     * Gets called when a line is availble.
+     * @param data the data.
+     * @param identifier the identifier of the line, used to determine how to use it.
+     */
+    protected async on_line(data: string, identifier: string | number | null): Promise<void> {
+        switch (identifier) {
+            //////////////////////////////////
+            /// Plain Auth Continuation.
+            //////////////////////////////////
+            case SmtpServerConnectionLineIdentifier.AuthenticationPlain: {
+                // Goes back to command mode.
+                this.stream.enter_command_mode();
+
+                // Decodes the base64 value.
+                const [user_arg, pass_arg] = __auth_plain_parse(data);
+
+                // Gets the user, and checks if the credentials are correct.
+                const user: SmtpUser | null = await this.server.config.get_user(user_arg, this);
+                if (!user || !(await this.server.config.password_compare(pass_arg, user.pass))) {
+                    this.smtp_socket.write(new SmtpResponse(535, Messages.auth.bad_credentials(this),
+                        new SmtpEnhancedStatusCode(5, 7, 8)).encode(true));
+                    return;
+                }
+
+                // If the credentials are right, set the flags and the user.
+                this.session.set_flags(SmtpServerSessionFlag.Authenticated);
+                this.session.user = user;
+
+                // Sends the success.
+                this.smtp_socket.write(new SmtpResponse(235, Messages.auth._(this),
+                    new SmtpEnhancedStatusCode(2, 7, 0)).encode(true));
+
+                // Breaks.
+                break;
+            }
+            //////////////////////////////////
+            /// XOAUTH2 Continuation.
+            //////////////////////////////////
+            case SmtpServerConnectionLineIdentifier.AuthenticationXOAUTH2: {
+                // Goes back to command mode.
+                this.stream.enter_command_mode();
+
+                // Parses the XOAUTH2 token.
+                let token: XOATH2Token;
+                try {
+                    token = XOATH2Token.decode(data.trim());
+                } catch (e) {
+                    throw new InvalidCommandArguments((e as Error).message);
+                }
+
+                // Validates the token.
+                const user: SmtpUser | null = await this.server.config.verify_xoath2(token, this);
+                if (!user) {
+                    this.smtp_socket.write(new SmtpResponse(535, Messages.auth.bad_credentials(this),
+                        new SmtpEnhancedStatusCode(5, 7, 8)).encode(true));
+                    return;
+                }
+
+                // If the credentials are right, set the flags and the user.
+                this.session.set_flags(SmtpServerSessionFlag.Authenticated);
+                this.session.user = user;
+
+                // Sends the success.
+                this.smtp_socket.write(new SmtpResponse(235, Messages.auth._(this),
+                    new SmtpEnhancedStatusCode(2, 7, 0)).encode(true));
+                // Breaks.
+                break;
+            }
+            //////////////////////////////////
+            /// Other.
+            //////////////////////////////////
+            default: {
+                // Goes back to command mode.
+                this.stream.enter_command_mode();
+
+                // Breaks.
+                break;
             }
         }
     }
@@ -261,13 +384,12 @@ export class SmtpServerConnection extends EventEmitter {
         if (this.session.get_flags(SmtpServerSessionFlag.BinaryDataTransferLast)) {
             // Sets the flag indicating the data transfer is done.
             this.session.set_flags(SmtpServerSessionFlag.DataTransfered);
-            
+
             // We're done.
             const result: Error | null = await this.handle_mail();
             if (result !== null) {
                 // TODO: handle this.
             }
-
 
             // Writes the response of the data transfer end.
             this.smtp_socket.write(new SmtpResponse(250, Messages.bdat.done(this),
@@ -278,6 +400,98 @@ export class SmtpServerConnection extends EventEmitter {
         // Sends the response.
         this.smtp_socket.write(new SmtpResponse(250, Messages.bdat._(data.length, this),
             new SmtpEnhancedStatusCode(2, 0, 0)).encode(true));
+    }
+
+    /**
+     * Handles the AUTH command.
+     * @param command the command.
+     */
+    protected async _handle_auth(command: SmtpCommand): Promise<void> {
+        // Checks if the command is disabled.
+        if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Auth)) {
+            throw new CommandDisabled();
+        }
+
+        // Makes sure we're allowed to perform this command.
+        if (!this.session.get_flags(SmtpServerSessionFlag.Introduced) || this.session.get_flags(SmtpServerSessionFlag.From) || this.session.get_flags(SmtpServerSessionFlag.Authenticated)) {
+            throw new BadSequenceError();
+        }
+
+        // Checks if there are arguments at all.
+        if (!command.arguments || command.arguments.length === 0) {
+            throw new InvalidCommandArguments('No arguments.');
+        }
+
+        // Gets the first argument, indicating the mechanism.
+        const mechanism: string = command.arguments[0].trim().toUpperCase();
+
+        // Checks the type of mechanism.
+        switch (mechanism) {
+            case SmtpAuthType.PLAIN: {
+                // Makes sure there are two arguments, if not this means that we need to wait for another
+                //  line to have the auth value (super retarded).
+                if (command.arguments.length !== 2) {
+                    this.stream.enter_line_mode(SmtpServerConnectionLineIdentifier.AuthenticationPlain);
+                    break;
+                }
+
+                // Gets the second argument, and decodes the Base64 value.
+                const [user_arg, pass_arg] = __auth_plain_parse(command.arguments[1]);
+
+                // Gets the user, and checks if the credentials are correct.
+                const user: SmtpUser | null = await this.server.config.get_user(user_arg, this);
+                if (!user || !(await this.server.config.password_compare(pass_arg, user.pass))) {
+                    this.smtp_socket.write(new SmtpResponse(535, Messages.auth.bad_credentials(this),
+                        new SmtpEnhancedStatusCode(5, 7, 8)).encode(true));
+                    return;
+                }
+
+                // If the credentials are right, set the flags and the user.
+                this.session.set_flags(SmtpServerSessionFlag.Authenticated);
+                this.session.user = user;
+
+                // Sends the success.
+                this.smtp_socket.write(new SmtpResponse(235, Messages.auth._(this),
+                    new SmtpEnhancedStatusCode(2, 7, 0)).encode(true));
+
+                break;
+            }
+            case SmtpAuthType.XOAUTH2: {
+                // Makes sure there are two arguments.
+                if (command.arguments.length !== 2) {
+                    this.stream.enter_line_mode(SmtpServerConnectionLineIdentifier.AuthenticationXOAUTH2);
+                    break;
+                }
+
+                // Parses the XOAUTH2 token.
+                let token: XOATH2Token;
+                try {
+                    token = XOATH2Token.decode(command.arguments[1].trim());
+                } catch (e) {
+                    throw new InvalidCommandArguments((e as Error).message);
+                }
+
+                // Validates the token.
+                const user: SmtpUser | null = await this.server.config.verify_xoath2(token, this);
+                if (!user) {
+                    this.smtp_socket.write(new SmtpResponse(535, Messages.auth.bad_credentials(this),
+                        new SmtpEnhancedStatusCode(5, 7, 8)).encode(true));
+                    return;
+                }
+
+                // If the credentials are right, set the flags and the user.
+                this.session.set_flags(SmtpServerSessionFlag.Authenticated);
+                this.session.user = user;
+
+                // Sends the success.
+                this.smtp_socket.write(new SmtpResponse(235, Messages.auth._(this),
+                    new SmtpEnhancedStatusCode(2, 7, 0)).encode(true));
+                break;
+            }
+
+            default:
+                throw new InvalidCommandArguments();
+        }
     }
 
     /**
