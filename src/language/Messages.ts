@@ -19,7 +19,7 @@ export const Messages = {
             return `OK, go ahead. ${SUFFIX}`;
         },
         too_large: (connection: SmtpServerConnection): string => {
-            return `Message size exceeded limit of ${MAX_MESSAGE_SIZE} bytes, terminating connection. ${SUFFIX}`;
+            return `Message size exceeded limit of ${connection.server.config.size_limit} bytes, terminating connection. ${SUFFIX}`;
         },
     },
     bdat: {

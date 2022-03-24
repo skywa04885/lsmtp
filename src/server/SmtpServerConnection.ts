@@ -14,6 +14,7 @@ import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpSocket } from "../shared/SmtpSocket";
 import { SmtpServer } from "./SmtpServer";
 import { SmtpServerFeatureFlag } from "./SmtpServerConfig";
+import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
 import { SmtpServerMessageTarget, SmtpServerMessageTargetType } from "./SmtpServerMessageTarget";
 import { SmtpServerSession, SmtpServerSessionFlag } from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
@@ -77,8 +78,6 @@ export class SmtpServerConnection extends EventEmitter {
      * @returns ourselves.
      */
     public async begin(): Promise<void> {
-
-
         // Sends the greeting.
         this.smtp_socket.write(new SmtpResponse(220,
             Messages.greeting._(this)).encode(true));
@@ -89,6 +88,32 @@ export class SmtpServerConnection extends EventEmitter {
      * @param had_error if there was an error (net-only).
      */
     protected _event_close(had_error: boolean): void {
+    }
+
+    /**
+     * Constructs the SmtpServerMail class, and returns it to the callback.
+     * @returns an possible error from the callee.
+     */
+    protected async handle_mail(): Promise<Error | null> {
+        if (!this.session.get_flags(SmtpServerSessionFlag.From | SmtpServerSessionFlag.To | SmtpServerSessionFlag.DataTransfered | SmtpServerSessionFlag.Introduced)) {
+            throw new Error('Handle mail cannot be called without finished transfer.');
+        }
+
+        // Constructs the meta object.
+        const meta: SmtpServerMailMeta = {
+            remote_address: this.smtp_socket.address,
+            remote_family: this.smtp_socket.family,
+            remote_port: this.smtp_socket.port,
+            secure: this.smtp_socket.secure,
+            remote_domain: this.session.remote_domain as string,
+            date: new Date()
+        };
+
+        // Constructs the mail.
+        const mail: SmtpServerMail = new SmtpServerMail(this.session.data as string, this.session.from as string, this.session.to as SmtpServerMessageTarget[], meta);
+
+        // Calls the callback.
+        return await this.server.config.handle_mail(mail, this);
     }
 
     /**
@@ -194,8 +219,17 @@ export class SmtpServerConnection extends EventEmitter {
         // Sets the stream mode back to command.
         this.stream.enter_command_mode();
 
+        // Sets the flags.
+        this.session.set_flags(SmtpServerSessionFlag.DataTransfered);
+
         // Sets the data in the session.
         this.session.data = data;
+
+        // We're done.
+        const result: Error | null = await this.handle_mail();
+        if (result !== null) {
+            // TODO: handle this.
+        }
 
         // Sends the response.
         this.smtp_socket.write(new SmtpResponse(250, Messages.data.done(this),
@@ -227,8 +261,15 @@ export class SmtpServerConnection extends EventEmitter {
         if (this.session.get_flags(SmtpServerSessionFlag.BinaryDataTransferLast)) {
             // Sets the flag indicating the data transfer is done.
             this.session.set_flags(SmtpServerSessionFlag.DataTransfered);
+            
+            // We're done.
+            const result: Error | null = await this.handle_mail();
+            if (result !== null) {
+                // TODO: handle this.
+            }
 
-            // Writes the response of the data transfer end.\
+
+            // Writes the response of the data transfer end.
             this.smtp_socket.write(new SmtpResponse(250, Messages.bdat.done(this),
                 new SmtpEnhancedStatusCode(2, 0, 0)).encode(true));
             return;
@@ -318,7 +359,7 @@ export class SmtpServerConnection extends EventEmitter {
         this.session.set_flags(SmtpServerSessionFlag.RegularTransferMethod);
 
         // Sets the stream mode to data mode.
-        this.stream.enter_data_mode(MAX_MESSAGE_SIZE);
+        this.stream.enter_data_mode(this.server.config.size_limit);
 
         // Sends the signal to start.
         this.smtp_socket.write(new SmtpResponse(354, Messages.data._(this),
@@ -401,7 +442,7 @@ export class SmtpServerConnection extends EventEmitter {
         this.session.set_flags(SmtpServerSessionFlag.Introduced);
 
         // Sets the state variables.
-        this.session.client_domain = command.arguments[0].trim();
+        this.session.remote_domain = command.arguments[0].trim();
 
         // Writes the response.
         this.smtp_socket.write(new SmtpResponse(250, Messages.helo._(this)).encode(true));
@@ -435,7 +476,7 @@ export class SmtpServerConnection extends EventEmitter {
         this.session.set_flags(SmtpServerSessionFlag.Introduced);
 
         // Sets the state variables.
-        this.session.client_domain = command.arguments[0].trim();
+        this.session.remote_domain = command.arguments[0].trim();
 
         // Writes the multiline response.
         SmtpMultipleLineRespons.write_line_callback(this.smtp_socket,

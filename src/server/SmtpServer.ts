@@ -56,7 +56,7 @@ export class SmtpServer extends EventEmitter {
             this.capabilities.push(new SmtpCapability(SmtpCapabilityType.EightBitMIME));
         }
         if (this.config.feature_enabled(SmtpServerFeatureFlag.Auth)) {
-            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN.toString() ]));
+            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Auth, [ SmtpAuthType.PLAIN ]));
         }
     }
 
@@ -76,7 +76,7 @@ export class SmtpServer extends EventEmitter {
 
         // Secure
 
-        this.secure_server = tls.createServer();
+        this.secure_server = tls.createServer(this.config.tls_config);
 
         this.secure_server.on('secureConnection', (socket: tls.TLSSocket) => this._event_connection(true, socket));
         this.secure_server.on('tlsClientError', (err: Error, _: tls.TLSSocket) => this._event_error(true, err));

@@ -1,5 +1,7 @@
+import { TLSSocketOptions } from "tls";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpServerConnection } from "./SmtpServerConnection";
+import { SmtpServerMail } from "./SmtpServerMail";
 
 export enum SmtpServerFeatureFlag {
     Chunking = (1 << 0),            // Chunking and BinaryMIME.
@@ -14,14 +16,15 @@ export enum SmtpServerFeatureFlag {
 
 export class SmtpServerConfig {
     public constructor(
-        public readonly domain: string,
         public readonly validate_from: (mailbox: string, connection: SmtpServerConnection) => Promise<boolean>,
         public readonly validate_to: (mailbox: string, connection: SmtpServerConnection) => Promise<boolean>,
-        public readonly verbose: boolean,
         public readonly verify_name: (name: string, connection: SmtpServerConnection) => Promise<SmtpMailbox[]>,
         public readonly verify_mailbox: (mailbox: string, connection: SmtpServerConnection) => Promise<SmtpMailbox | null>,
+        public readonly handle_mail: (mail: SmtpServerMail, connection: SmtpServerConnection) => Promise<Error | null>,
+        public readonly domain: string,
         public readonly enabled_features: number,
-        public readonly size_limit: number | null
+        public readonly size_limit: number | null,
+        public readonly tls_config: TLSSocketOptions
     ) { }
 
     /**

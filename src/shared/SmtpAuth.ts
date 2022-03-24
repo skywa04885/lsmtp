@@ -1,3 +1,3 @@
 export enum SmtpAuthType {
-    PLAIN
+    PLAIN = 'PLAIN'
 };

@@ -19,8 +19,7 @@ export class SmtpServerMessageTarget {
     public constructor(public type: SmtpServerMessageTargetType,
         public readonly address: string,
         public readonly relay_to: string | null = null) { }
-    
-    
+
     /**
      * Decodes an address with relay target, for example '@asd.com:user@asd.com'
      * @param raw the raw address.

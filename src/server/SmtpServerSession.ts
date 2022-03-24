@@ -1,5 +1,6 @@
 import { LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpSessionState } from "../shared/SmtpSession";
+import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
 const STATE_RESET = SmtpSessionState.Command;
@@ -18,7 +19,7 @@ export enum SmtpServerSessionFlag {
 
 export class SmtpServerSession {
     public invalid_command_count: number = 0;
-    public client_domain: string | null = null;
+    public remote_domain: string | null = null;
     public from: string | null = null;
     public to: SmtpServerMessageTarget[] | null = null;
     public state: SmtpSessionState = STATE_RESET;
@@ -41,14 +42,6 @@ export class SmtpServerSession {
         return this.to.filter((tt: SmtpServerMessageTarget): boolean => {
             return t.address === tt.address;
         }).length !== 0;
-    }
-
-    /**
-     * Appends a line to the data.
-     * @param line the line to append.
-     */
-    public append_data_line(line: string): void {
-        this.data += `${line}${LINE_SEPARATOR}`;
     }
 
     /**
@@ -76,7 +69,7 @@ export class SmtpServerSession {
      */
     public hard_reset(): void {
         // Sets the variables.
-        this.client_domain = null;
+        this.remote_domain = null;
         this.from = null;
         this.to = null;
         this.data = null;
