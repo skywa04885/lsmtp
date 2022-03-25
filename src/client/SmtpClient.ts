@@ -4,13 +4,14 @@ import {SmtpCommand, SmtpCommandType} from "../shared/SmtpCommand";
 import {LINE_SEPARATOR} from "../shared/SmtpConstants";
 import {SmtpResponse} from "../shared/SmtpResponse";
 import {SmtpSocket} from "../shared/SmtpSocket";
-import {SmtpClientAssignment} from "./SmtpClientAssignment";
 import {SmtpClientDNS} from "./SmtpClientDNS";
 import {SmtpClientStream} from "./SmtpClientStream";
-import {SmtpClientErrorOrigin, SmtpClientFatalTransactionError} from "./SmtpClientError";
+import {SmtpClientErrorOrigin, SmtpClientFatalTransactionError, SmtpClientTransactionError} from "./SmtpClientError";
 import {Logger} from "../helpers/Logger";
-import {SmtpCapability, SmtpCapabilityType} from "../shared/SmtpCapability";
+import {SmtpCapability} from "../shared/SmtpCapability";
 import {EventEmitter} from "stream";
+import {SmtpClientAssignment} from "./SmtpClientAssignment";
+import {smtp_client_server_opts_from_capabilities, SmtpClientServerOpts} from "./SmtpClientServerConfig";
 
 export enum SmtpClientState {
     Prep = 'PREP',
@@ -36,22 +37,6 @@ export interface SmtpClientConfig {
     debug: boolean;                     // If the client should be in debug mode.
 }
 
-export enum SmtpClientServerConfigSupported {
-    Pipelining = (1 << 0),
-    StartTLS = (1 << 1),
-    EightBitMime = (1 << 2),
-    SmtpUTF8 = (1 << 3),
-    Auth = (1 << 4),
-    Verify = (1 << 5),
-    Chunking = (1 << 6),
-    Expand = (1 << 7),
-}
-
-export interface SmtpClientServerConfig {
-    max_message_size: number | null;
-    supported: Flags;
-}
-
 export class SmtpClient extends EventEmitter {
     protected _state: SmtpClientState = SmtpClientState.Prep;
     protected _smtp_socket: SmtpSocket | null = null;
@@ -61,25 +46,49 @@ export class SmtpClient extends EventEmitter {
     protected _flags: Flags = new Flags();
     protected _logger: Logger;
     protected _idle_noop_interval: null | NodeJS.Timeout = null;
-    protected _server_config: SmtpClientServerConfig | null = null;
+    protected _server_opts: SmtpClientServerOpts | null = null;
 
     protected _total_assigned: number = 0;          // The number of total assigned messages.
     protected _total_sent: number = 0;              // The number of total sent messages.
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Constructor and Getters / Setters                                                                              //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Constructs a new SmtpClient.
+     * @param config the client configuration.
+     */
     public constructor(public readonly config: SmtpClientConfig) {
-        super({});
+        super();
         this._logger = new Logger(`SMTPClient<${this.config.hostname}>`)
     }
 
+    /**
+     * Gets the total number of sent messages.
+     */
     public get total_sent(): number {
         return this._total_sent;
     }
 
-    public assign(assignment: SmtpClientAssignment) {
-        // Increments the assigned counter.
-        ++this._total_assigned;
+    /**
+     * Gets the total number of assigned messages.
+     */
+    public get total_assigned(): number {
+        return this._total_assigned;
+    }
 
-        // Debug logs.
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Public instance methods                                                                                        //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Assigns a new assignment to the current client.
+     * @param assignment the assignment.
+     */
+    public assign(assignment: SmtpClientAssignment) {
+        // Increments the assigned counter, and performs the debug log.
+        ++this._total_assigned;
         if (this.config.debug) {
             this._logger.trace(`Enqueueing new assignment, to: `, assignment.to);
         }
@@ -134,48 +143,30 @@ export class SmtpClient extends EventEmitter {
         this._smtp_socket.socket.pipe(this._stream);
     }
 
-    public use_esmtp_generator() {
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Protected instance methods                                                                                     //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    protected async use_esmtp_generator() {
         this._generator = this.esmtp_generator();
-        this._generator.next();
+        await this._generator.next();
     }
 
-    public use_smtp_generator() {
+    protected async use_smtp_generator() {
         this._generator = this.smtp_generator();
-        this._generator.next();
+        await this._generator.next();
     }
 
-    public use_idle_generator() {
+    protected use_idle_generator() {
         this._generator = this.idle_generator();
         this._generator.next();
-    }
-
-    public enter_busy_mode(): void {
-        // Sets the state.
-        this._state = SmtpClientState.Busy;
-    }
-
-    public enter_idle_mode() {
-        if (this.config.debug) {
-            this._logger.trace(`IDLE mode is now being entered, NOOP interval: ${this.config.keep_alive_noop_interval}`);
-        }
-
-        // Uses the IDLE generator.
-        this.use_idle_generator();
-
-        // Sets the state.
-        this._state = SmtpClientState.Idle;
-
-        // Sets the interval.
-        this._idle_noop_interval = setTimeout(() => {
-            this._generator.next(false);
-        }, this.config.keep_alive_noop_interval);
     }
 
     /**
      * Gets called when there is a response.
      * @param response the response.
      */
-    public async on_response(response: SmtpResponse): Promise<void> {
+    protected async on_response(response: SmtpResponse): Promise<void> {
         if (this.config.debug) {
             this._logger.trace('>> [RESPONSE]', response.encode(false));
         }
@@ -221,10 +212,14 @@ export class SmtpClient extends EventEmitter {
         this._smtp_socket?.write(`.${LINE_SEPARATOR}`);
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Protected Generators                                                                                           //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     /**
      * The initial main generator, which just reads the initial greeting and does something with it.
      */
-    public async *initial_main(): AsyncGenerator<void, void, SmtpResponse> {        
+    protected async *initial_main(): AsyncGenerator<void, void, SmtpResponse> {
         // Gets the initial greeting / response.
         let response: SmtpResponse = yield;
         if (this.config.debug) {
@@ -252,93 +247,24 @@ export class SmtpClient extends EventEmitter {
             this.write_command(new SmtpCommand(SmtpCommandType.Ehlo, [ this.config.server_domain ]));
             response = yield;
 
-            // Initializes the server configuration.
-            this._server_config = {
-                max_message_size: null,
-                supported: new Flags(),
-            };
-
-            // Parses the capabilities, and loops over them configuring the smtp client.
-            const parsed_capabilities: SmtpCapability[] = SmtpCapability.decode_many(
+            // Reads the capabilities from the response message.
+            const capabilities: SmtpCapability[] = SmtpCapability.decode_many(
                 response.message as string[], 1 /* Skip the initial line, there is nothing there. */);
-            parsed_capabilities.forEach((capability: SmtpCapability): void => {
-                switch (capability.type) {
-                    case SmtpCapabilityType.Auth:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.Auth);
-                        break;
-                    case SmtpCapabilityType.Chunking:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.Chunking);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected chunking support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.Vrfy:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.Verify);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected verify support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.Expn:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.Expand);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected expand support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.EightBitMIME:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.EightBitMime);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected 8BIT-MIME support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.SmtpUTF8:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.SmtpUTF8);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected SMTP-UTF8 support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.Pipelining:
-                        // @ts-ignore
-                        this._server_config.supported.set(SmtpClientServerConfigSupported.Pipelining);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected pipelining support.`);
-                        }
-                        break;
-                    case SmtpCapabilityType.Size: {
-                        // Makes sure there are enough arguments.
-                        const args: string[] = capability.args as string[];
-                        if (args.length !== 1) {
-                            throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.GeneratorInitial,
-                                'Failed to parse SIZE capability, invalid arguments.',
-                                response);
-                        }
 
-                        // @ts-ignore
-                        this._server_config.max_message_size = parseInt(args[0]);
-                        if (this.config.debug) {
-                            this._logger.trace(`Detected max message size: ${this._server_config?.max_message_size}.`);
-                        }
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            });
-
+            // Gets the server options from the capabilities.
+            try {
+                this._server_opts = smtp_client_server_opts_from_capabilities(capabilities);
+            } catch (e) {
+                throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.GeneratorInitial,
+                    `Invalid capabilities: ${e}`, response);
+            }
         } else if (response_message_segments.includes("SMTP")) {
             this._flags.set(SmtpClientFlag.SMTP);
-
             if (this.config.debug) {
                 this._logger.trace(`Server supports SMTP.`);
             }
         } else {
             this._flags.set(SmtpClientFlag.SMTP);
-
             if (this.config.debug) {
                 this._logger.trace(`Server did not advertise either SMTP or ESMTP, assuming SMTP (to be safe).`);
             }
@@ -352,14 +278,24 @@ export class SmtpClient extends EventEmitter {
      * Gets called when we are done with something, and we want to transmit a new message,
      *  or if none queued, enter IDLE mode.
      */
-    public next(): void {
+    protected async next() {
         // Checks if there are any assignments, if not enter IDLE mode.
         if (this._assignments.size === 0) {
             // Enters IDLE mode.
             if (this.config.debug) {
                 this._logger.trace('Entering IDLE mode, no assignments queued ...');
             }
-            this.enter_idle_mode();
+
+            // Uses the IDLE generator.
+            this.use_idle_generator();
+
+            // Sets the state.
+            this._state = SmtpClientState.Idle;
+
+            // Sets the interval.
+            this._idle_noop_interval = setTimeout(() => {
+                this._generator.next();
+            }, this.config.keep_alive_noop_interval);
             return;
         }
 
@@ -376,34 +312,29 @@ export class SmtpClient extends EventEmitter {
             this._logger.trace('Entering busy mode ...');
         }
 
-        this.enter_busy_mode();
+        // Sets the state to busy.
+        this._state = SmtpClientState.Busy;
 
+        // Selects the generator depending on the server type.
         if (this._flags.get(SmtpClientFlag.SMTP)) {
             if (this.config.debug) {
                 this._logger.trace('Using SMTP Generator.');
             }
-            this.use_smtp_generator();
+            await this.use_smtp_generator();
         } else if (this._flags.get(SmtpClientFlag.ESMTP)) {
             if (this.config.debug) {
                 this._logger.trace('Using ESMTP Generator.');
             }
-            this.use_esmtp_generator();
+            await this.use_esmtp_generator();
         } else {
             throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.Next,
                 'No SMTP or ESMTP flag set.');
         }
     }
 
-    public *idle_generator() {
+    protected *idle_generator() {
         // Stays in loop forever.
         while (true) {
-            // Waits for the next time IDLE generator is called, if the exit is true
-            //  exit the loop.
-            const exit: boolean = (yield) as boolean;
-            if (exit) {
-                break;
-            }
-
             // Sends the NOOP.
             this.write_command(new SmtpCommand(SmtpCommandType.Noop, null));
 
@@ -414,15 +345,17 @@ export class SmtpClient extends EventEmitter {
                     'NOOP command did not receive valid status of 250',  response);
             }
 
-            // Since we're being called by a timer, reset it.
+            // Since we're being called by a timer, reset it. Then we yield, and wait for a new
+            //  next call to execute the loop again.
             this._idle_noop_interval?.refresh();
+            yield;
         }
     }
 
     /**
      * the SMTP generator, this generator gets called when we want to transmit an SMTP message.
      */
-    public async *smtp_generator(): AsyncGenerator<void, void, SmtpResponse> {
+    protected async *smtp_generator() {
 
         // Increments the number of sent emails.
         ++this._total_sent;
@@ -431,30 +364,32 @@ export class SmtpClient extends EventEmitter {
     /**
      * the ESMTP generator, this generator gets called when we want to transmit an ESMTP message.
      */
-    public async *esmtp_generator(): AsyncGenerator<void, void, SmtpResponse> {
-        const assignment: SmtpClientAssignment = this._assignments.peek();
+    protected async *esmtp_generator() {
         let response: SmtpResponse;
 
-        if (this.config.debug) {
-            this._logger.trace(`ESMTP Generator Started.`);
+        // Gets the current assignment.
+        const assignment: SmtpClientAssignment = this._assignments.peek();
+
+        // Writes the RSET command.
+        this.write_command(new SmtpCommand(SmtpCommandType.Rset, null));
+        response = yield;
+        if (response.status !== 250) {
+            throw new SmtpClientTransactionError(SmtpClientErrorOrigin.GeneratorESMTP,
+                'Invalid RSET response.', response)
         }
 
-        // Writes the EHLO command.
-        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Rset, null).encode(true));
-        response = yield;
-
         // Writes the MAIL command.
-        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Mail, [ `FROM:<${assignment.from}>` ]).encode(true));
+        this.write_command(new SmtpCommand(SmtpCommandType.Mail, [ `FROM:<${assignment.from}>` ]));
         response = yield;
 
         // Writes the RCPT command.
         for (const mailbox of assignment.to) {
-            this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Rcpt, [ `TO:<${mailbox}>` ]).encode(true));
+            this.write_command(new SmtpCommand(SmtpCommandType.Rcpt, [ `TO:<${mailbox}>` ]));
             response = yield;
         }
 
         // Writes the DATA command.
-        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Data, null).encode(true));
+        this.write_command(new SmtpCommand(SmtpCommandType.Data, null));
         response = yield;
 
         // Writes the DATA.

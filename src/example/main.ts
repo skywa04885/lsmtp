@@ -146,27 +146,18 @@ this is the attachment text\r
 \r
 `;
 
-const config = {
-    server_domain: 'localhost',
-    keep_alive_for: 5 * 60 * 1000,                  // 5 minutes.
-    keep_alive_noop_interval: 1000 * 2,             // 1 minute.
-    debug: false,
-    port: 25,
-    resolve_mx: false,
-    hostname: 'localhost',
-};
-
 const manager = new SmtpClientManager({
     max_assignments_per_client: 3,
+    client_keep_alive_interval: 1000,
     debug: true,
     server_domain: 'asd.com'
 });
 
-setInterval(() => {
-    manager.assign('gmail.com', {
+for (let i = 0; i < 9; ++i) {
+    manager.assign('localhost', {
         to: ['luke.rieff@gmail.com'],
         from: 'luke.rieff@kaas.com',
         data: DATA,
-        callback: () => console.log(`Executed`)
+        callback: () => console.log(`Executed ${i}`)
     });
-}, 2000);
+}
