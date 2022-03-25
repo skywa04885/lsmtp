@@ -16,6 +16,13 @@ export class Queue<T> {
     }
 
     /**
+     * Checks if the queue is empty.
+     */
+    public get empty(): boolean {
+        return this.size === 0;
+    }
+
+    /**
      * Enqueues the given data.
      * @param data the data.
      */

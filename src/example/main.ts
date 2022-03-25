@@ -11,6 +11,7 @@
 
 import { SmtpClient } from "../client/SmtpClient";
 import { SmtpSocket } from "../shared/SmtpSocket";
+import {SmtpClientManager} from "../client/SmtpClientManager";
 
 // const private_key: Buffer = fs.readFileSync(path.join(__dirname, '../../', 'private.key'));
 // const cert: Buffer = fs.readFileSync(path.join(__dirname, '../../', 'certificate.crt'));
@@ -145,22 +146,27 @@ this is the attachment text\r
 \r
 `;
 
-const client = new SmtpClient('localhost', {
+const config = {
     server_domain: 'localhost',
     keep_alive_for: 5 * 60 * 1000,                  // 5 minutes.
     keep_alive_noop_interval: 1000 * 2,             // 1 minute.
     debug: false,
     port: 25,
-    resolve_mx: false
-})
+    resolve_mx: false,
+    hostname: 'localhost',
+};
 
-for (let i = 0; i < 9000; ++i) {
-    client.enqueue({
-        to: ['miwadox164@karavic.com'],
+const manager = new SmtpClientManager({
+    max_assignments_per_client: 3,
+    debug: true,
+    server_domain: 'asd.com'
+});
+
+setInterval(() => {
+    manager.assign('gmail.com', {
+        to: ['luke.rieff@gmail.com'],
         from: 'luke.rieff@kaas.com',
         data: DATA,
-        callback: () => console.log(`Executed ${i}`)
+        callback: () => console.log(`Executed`)
     });
-}
-
-client.init()
+}, 2000);

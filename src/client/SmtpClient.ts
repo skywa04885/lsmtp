@@ -9,6 +9,8 @@ import {SmtpClientDNS} from "./SmtpClientDNS";
 import {SmtpClientStream} from "./SmtpClientStream";
 import {SmtpClientErrorOrigin, SmtpClientFatalTransactionError} from "./SmtpClientError";
 import {Logger} from "../helpers/Logger";
+import {SmtpCapability, SmtpCapabilityType} from "../shared/SmtpCapability";
+import {EventEmitter} from "stream";
 
 export enum SmtpClientState {
     Prep = 'PREP',
@@ -25,6 +27,7 @@ export interface SmtpClientConfig {
     // Server
     resolve_mx: boolean;                // If we should resolve MX or just connect directly.
     server_domain: string;              // The server domain included in the EHLO/ HELO.
+    hostname: string;                   // The server hostname.
     port: number;                       // Server port.
     // Keep-Alive
     keep_alive_for: number;             // The number of milliseconds to keep the connection alive after last BUSY.
@@ -33,7 +36,23 @@ export interface SmtpClientConfig {
     debug: boolean;                     // If the client should be in debug mode.
 }
 
-export class SmtpClient {
+export enum SmtpClientServerConfigSupported {
+    Pipelining = (1 << 0),
+    StartTLS = (1 << 1),
+    EightBitMime = (1 << 2),
+    SmtpUTF8 = (1 << 3),
+    Auth = (1 << 4),
+    Verify = (1 << 5),
+    Chunking = (1 << 6),
+    Expand = (1 << 7),
+}
+
+export interface SmtpClientServerConfig {
+    max_message_size: number | null;
+    supported: Flags;
+}
+
+export class SmtpClient extends EventEmitter {
     protected _state: SmtpClientState = SmtpClientState.Prep;
     protected _smtp_socket: SmtpSocket | null = null;
     protected _stream: SmtpClientStream | null = null;
@@ -42,13 +61,24 @@ export class SmtpClient {
     protected _flags: Flags = new Flags();
     protected _logger: Logger;
     protected _idle_noop_interval: null | NodeJS.Timeout = null;
-    
-    public constructor(public readonly hostname: string,
-                       public readonly config: SmtpClientConfig) {
-        this._logger = new Logger(`SMTPClient<${hostname}>`)
+    protected _server_config: SmtpClientServerConfig | null = null;
+
+    protected _total_assigned: number = 0;          // The number of total assigned messages.
+    protected _total_sent: number = 0;              // The number of total sent messages.
+
+    public constructor(public readonly config: SmtpClientConfig) {
+        super({});
+        this._logger = new Logger(`SMTPClient<${this.config.hostname}>`)
     }
 
-    public enqueue(assignment: SmtpClientAssignment) {
+    public get total_sent(): number {
+        return this._total_sent;
+    }
+
+    public assign(assignment: SmtpClientAssignment) {
+        // Increments the assigned counter.
+        ++this._total_assigned;
+
         // Debug logs.
         if (this.config.debug) {
             this._logger.trace(`Enqueueing new assignment, to: `, assignment.to);
@@ -74,7 +104,7 @@ export class SmtpClient {
         let exchange: string;
         if (this.config.resolve_mx) {
             // Resolves the MX records.
-            const mx: string[] = await SmtpClientDNS.mx(this.hostname);
+            const mx: string[] = await SmtpClientDNS.mx(this.config.hostname);
             if (mx.length === 0) {
                 throw new Error('Could not initialize SMTP client, no MX records found.');
             }
@@ -85,7 +115,7 @@ export class SmtpClient {
                 this._logger.trace(`MX Resolved found ${mx.length} exchanges, using exchange: '${exchange}'`);
             }
         } else {
-            exchange = this.hostname;
+            exchange = this.config.hostname;
         }
 
         // Sets the state to preparing.
@@ -196,7 +226,7 @@ export class SmtpClient {
      */
     public async *initial_main(): AsyncGenerator<void, void, SmtpResponse> {        
         // Gets the initial greeting / response.
-        const response: SmtpResponse = yield;
+        let response: SmtpResponse = yield;
         if (this.config.debug) {
             this._logger.trace(`Received server greeting: ${response.status} '${response.message_string}'.`);
         }
@@ -218,10 +248,87 @@ export class SmtpClient {
                 this._logger.trace(`Server supports ESMTP.`);
             }
 
-            // Performs the initial EHLO, since we will later use RSET.
-            this.write_command(new SmtpCommand(SmtpCommandType.Ehlo, null));
+            // Performs the initial EHLO, since we will later use RSET, and waits for the response.
+            this.write_command(new SmtpCommand(SmtpCommandType.Ehlo, [ this.config.server_domain ]));
+            response = yield;
 
-            // Waits for the EHLO response, and parses it to check capabilities.
+            // Initializes the server configuration.
+            this._server_config = {
+                max_message_size: null,
+                supported: new Flags(),
+            };
+
+            // Parses the capabilities, and loops over them configuring the smtp client.
+            const parsed_capabilities: SmtpCapability[] = SmtpCapability.decode_many(
+                response.message as string[], 1 /* Skip the initial line, there is nothing there. */);
+            parsed_capabilities.forEach((capability: SmtpCapability): void => {
+                switch (capability.type) {
+                    case SmtpCapabilityType.Auth:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.Auth);
+                        break;
+                    case SmtpCapabilityType.Chunking:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.Chunking);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected chunking support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.Vrfy:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.Verify);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected verify support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.Expn:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.Expand);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected expand support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.EightBitMIME:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.EightBitMime);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected 8BIT-MIME support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.SmtpUTF8:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.SmtpUTF8);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected SMTP-UTF8 support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.Pipelining:
+                        // @ts-ignore
+                        this._server_config.supported.set(SmtpClientServerConfigSupported.Pipelining);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected pipelining support.`);
+                        }
+                        break;
+                    case SmtpCapabilityType.Size: {
+                        // Makes sure there are enough arguments.
+                        const args: string[] = capability.args as string[];
+                        if (args.length !== 1) {
+                            throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.GeneratorInitial,
+                                'Failed to parse SIZE capability, invalid arguments.',
+                                response);
+                        }
+
+                        // @ts-ignore
+                        this._server_config.max_message_size = parseInt(args[0]);
+                        if (this.config.debug) {
+                            this._logger.trace(`Detected max message size: ${this._server_config?.max_message_size}.`);
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            });
 
         } else if (response_message_segments.includes("SMTP")) {
             this._flags.set(SmtpClientFlag.SMTP);
@@ -316,6 +423,9 @@ export class SmtpClient {
      * the SMTP generator, this generator gets called when we want to transmit an SMTP message.
      */
     public async *smtp_generator(): AsyncGenerator<void, void, SmtpResponse> {
+
+        // Increments the number of sent emails.
+        ++this._total_sent;
     }
 
     /**
@@ -330,7 +440,7 @@ export class SmtpClient {
         }
 
         // Writes the EHLO command.
-        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Ehlo, [ this.config.server_domain ]).encode(true));
+        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Rset, null).encode(true));
         response = yield;
 
         // Writes the MAIL command.
@@ -354,6 +464,9 @@ export class SmtpClient {
         // The assignment is finished, call the callback, and dequeue it.
         assignment.callback(null);
         this._assignments.dequeue();
+
+        // Increments the number of sent emails.
+        ++this._total_sent;
 
         // Goes to the next queued email.
         await this.next();
