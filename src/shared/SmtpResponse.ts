@@ -101,6 +101,13 @@ export class SmtpResponse {
     }
 
     /**
+     * Gets the segments of the message.
+     */
+    public get message_segments(): string[] {
+        return this.message_string.split(SEGMENT_SEPARATOR);
+    }
+
+    /**
      * The generator to decode a response.
      * @returns the decoded response.
      */

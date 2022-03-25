@@ -84,8 +84,12 @@ export class SmtpClientStream extends Writable {
                 continue;
             }
 
-            // Calls the command callback.
-            await this.on_response(result.value);
+            // Calls the command callback, and if an error occurs, emit it.
+            try {
+                await this.on_response(result.value);
+            } catch (e) {
+                this.emit('error', e);
+            }
 
             // Clears the state.
             this._response_decode_state = null;

@@ -96,3 +96,71 @@ import { SmtpSocket } from "../shared/SmtpSocket";
 // \r
 // `);
 // client.begin()
+
+const DATA = `From: Some One <someone@example.com>\r
+MIME-Version: 1.0\r
+Content-Type: multipart/mixed;\r
+        boundary="XXXXboundary text"\r
+\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+This is a multipart message in MIME format.\r
+\r
+--XXXXboundary text\r
+Content-Type: text/plain\r
+\r
+this is the body text\r
+\r
+--XXXXboundary text\r
+Content-Type: text/plain;\r
+Content-Disposition: attachment;\r
+        filename="test.txt"\r
+\r
+this is the attachment text\r
+\r
+.\r
+.\r
+.\r
+\r
+--XXXXboundary text--\r
+\r
+`;
+
+const client = new SmtpClient('localhost', {
+    server_domain: 'localhost',
+    keep_alive_for: 5 * 60 * 1000,                  // 5 minutes.
+    keep_alive_noop_interval: 1000 * 2,             // 1 minute.
+    debug: false,
+    port: 25,
+    resolve_mx: false
+})
+
+for (let i = 0; i < 9000; ++i) {
+    client.enqueue({
+        to: ['miwadox164@karavic.com'],
+        from: 'luke.rieff@kaas.com',
+        data: DATA,
+        callback: () => console.log(`Executed ${i}`)
+    });
+}
+
+client.init()

@@ -1,69 +1,166 @@
-import { HasFlags } from "../helpers/HasFlags";
-import { Queue } from "../helpers/Queue";
-import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
-import { LINE_SEPARATOR } from "../shared/SmtpConstants";
-import { SmtpResponse } from "../shared/SmtpResponse";
-import { SmtpSocket } from "../shared/SmtpSocket";
-import { SmtpClientAssignment } from "./SmtpClientAssignment";
-import { SmtpClientDNS } from "./SmtpClientDNS";
-import { SmtpClientStream } from "./SmtpClientStream";
+import {Flags} from "../helpers/Flags";
+import {Queue} from "../helpers/Queue";
+import {SmtpCommand, SmtpCommandType} from "../shared/SmtpCommand";
+import {LINE_SEPARATOR} from "../shared/SmtpConstants";
+import {SmtpResponse} from "../shared/SmtpResponse";
+import {SmtpSocket} from "../shared/SmtpSocket";
+import {SmtpClientAssignment} from "./SmtpClientAssignment";
+import {SmtpClientDNS} from "./SmtpClientDNS";
+import {SmtpClientStream} from "./SmtpClientStream";
+import {SmtpClientErrorOrigin, SmtpClientFatalTransactionError} from "./SmtpClientError";
+import {Logger} from "../helpers/Logger";
 
 export enum SmtpClientState {
+    Prep = 'PREP',
     Busy = 'BUSY',
     Idle = 'IDLE',
 }
 
 export enum SmtpClientFlag {
-    ESMTP = 'ESMTP',
-    SMTP = 'SMTP',
+    ESMTP = (1 << 0),                   // The server is an ESMTP server.
+    SMTP = (1 << 1),                    // The server is an SMTP server.
+}
+
+export interface SmtpClientConfig {
+    // Server
+    resolve_mx: boolean;                // If we should resolve MX or just connect directly.
+    server_domain: string;              // The server domain included in the EHLO/ HELO.
+    port: number;                       // Server port.
+    // Keep-Alive
+    keep_alive_for: number;             // The number of milliseconds to keep the connection alive after last BUSY.
+    keep_alive_noop_interval: number;   // The number of milliseconds between each NOOP while keeping the con open.
+    // Logging / Debugging.
+    debug: boolean;                     // If the client should be in debug mode.
 }
 
 export class SmtpClient {
-    protected _state: SmtpClientState = SmtpClientState.Idle;
+    protected _state: SmtpClientState = SmtpClientState.Prep;
     protected _smtp_socket: SmtpSocket | null = null;
     protected _stream: SmtpClientStream | null = null;
-    protected _main_instance: AsyncGenerator<void, void, SmtpResponse> | null = null;
+    protected _generator: any = null;
     protected _assignments: Queue<SmtpClientAssignment> = new Queue<SmtpClientAssignment>();
+    protected _flags: Flags = new Flags();
+    protected _logger: Logger;
+    protected _idle_noop_interval: null | NodeJS.Timeout = null;
     
-    public constructor(public readonly server_domain: string,
-        public readonly hostname: string,
-        public readonly keep_alive_for: number = 60 * 1000) {
+    public constructor(public readonly hostname: string,
+                       public readonly config: SmtpClientConfig) {
+        this._logger = new Logger(`SMTPClient<${hostname}>`)
+    }
+
+    public enqueue(assignment: SmtpClientAssignment) {
+        // Debug logs.
+        if (this.config.debug) {
+            this._logger.trace(`Enqueueing new assignment, to: `, assignment.to);
         }
 
+        // Enqueues a new assignment.
+        this._assignments.enqueue(assignment);
+
+        // Checks if the state is idle, and the size is larger than one.
+        if (this._assignments.size >= 1 && this._state === SmtpClientState.Idle) {
+            this.next();
+        }
+    }
+
+    /**
+     * Initializes the SMTP client.
+     */
     public async init(): Promise<void> {
-        // Resolves the MX records.
-        const mx: string[] = await SmtpClientDNS.mx(this.hostname);
-        if (mx.length === 0) {
-            throw new Error('Could not initialize SMTP client, no MX records found.');
+        if (this.config.debug) {
+            this._logger.trace('Initializing SmtpClient ...');
         }
 
-        // Selects an exchange.
-        const exchange: string = mx[0];
+        let exchange: string;
+        if (this.config.resolve_mx) {
+            // Resolves the MX records.
+            const mx: string[] = await SmtpClientDNS.mx(this.hostname);
+            if (mx.length === 0) {
+                throw new Error('Could not initialize SMTP client, no MX records found.');
+            }
+
+            // Selects an exchange.
+            exchange = mx[0];
+            if (this.config.debug) {
+                this._logger.trace(`MX Resolved found ${mx.length} exchanges, using exchange: '${exchange}'`);
+            }
+        } else {
+            exchange = this.hostname;
+        }
+
+        // Sets the state to preparing.
+        this._state = SmtpClientState.Prep;
+
+        // Enters the initial generator mode.
+        this._generator = this.initial_main();
+        this._generator.next(); // Goes to the first YIELD.
 
         // Creates the client stream.
         this._stream = new SmtpClientStream({}, (response: SmtpResponse) => this.on_response(response));
+        this._stream.on('error', (err: Error) => console.error);
 
         // Creates the smtp socket.
         this._smtp_socket = SmtpSocket.connect(false, exchange, 25);
         this._smtp_socket.socket.pipe(this._stream);
     }
 
-    public async enter_transmission_mode(): Promise<void> {
+    public use_esmtp_generator() {
+        this._generator = this.esmtp_generator();
+        this._generator.next();
+    }
+
+    public use_smtp_generator() {
+        this._generator = this.smtp_generator();
+        this._generator.next();
+    }
+
+    public use_idle_generator() {
+        this._generator = this.idle_generator();
+        this._generator.next();
+    }
+
+    public enter_busy_mode(): void {
         // Sets the state.
         this._state = SmtpClientState.Busy;
-
-        // Creates the main instance.
-        this._main_instance = this.esmtp_main();
-        this._main_instance.next();
     }
 
-    public async enter_idle_mode(): Promise<void> {
+    public enter_idle_mode() {
+        if (this.config.debug) {
+            this._logger.trace(`IDLE mode is now being entered, NOOP interval: ${this.config.keep_alive_noop_interval}`);
+        }
+
+        // Uses the IDLE generator.
+        this.use_idle_generator();
+
         // Sets the state.
         this._state = SmtpClientState.Idle;
+
+        // Sets the interval.
+        this._idle_noop_interval = setTimeout(() => {
+            this._generator.next(false);
+        }, this.config.keep_alive_noop_interval);
     }
 
+    /**
+     * Gets called when there is a response.
+     * @param response the response.
+     */
     public async on_response(response: SmtpResponse): Promise<void> {
-        await this._main_instance?.next(response);
+        if (this.config.debug) {
+            this._logger.trace('>> [RESPONSE]', response.encode(false));
+        }
+        await this._generator?.next(response);
+    }
+
+    /**
+     * Writes an command to the SMTP socket.
+     * @param command the command.
+     */
+    protected write_command(command: SmtpCommand): void {
+        if (this.config.debug) {
+            this._logger.trace('<< [COMMAND]', command.encode(false));
+        }
+        this._smtp_socket?.write(command.encode(true));
     }
 
     /**
@@ -94,47 +191,171 @@ export class SmtpClient {
         this._smtp_socket?.write(`.${LINE_SEPARATOR}`);
     }
 
+    /**
+     * The initial main generator, which just reads the initial greeting and does something with it.
+     */
     public async *initial_main(): AsyncGenerator<void, void, SmtpResponse> {        
-        let response: SmtpResponse;
+        // Gets the initial greeting / response.
+        const response: SmtpResponse = yield;
+        if (this.config.debug) {
+            this._logger.trace(`Received server greeting: ${response.status} '${response.message_string}'.`);
+        }
 
-        // Waits for the initial greet.
-        response = yield;
-        console.log(response);
+        // Checks if the response status is correct, if not throw a fatal error
+        //  since the client now cannot be initialized at all.
+        if (response.status !== 220) {
+            throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.GeneratorInitial,
+                'Initial greeting (response) status code is not 200, aborting ...', response);
+        }
+
+        // Checks if the response message contains 'SMTP' or 'ESMTP', if none of these we will assume
+        //  it is 'SMTP', and thus use older commands.
+        const response_message_segments: string[] = response.message_segments.map((segment: string) => segment.trim().toUpperCase());
+        if (response_message_segments.includes("ESMTP")) {
+            this._flags.set(SmtpClientFlag.ESMTP);
+
+            if (this.config.debug) {
+                this._logger.trace(`Server supports ESMTP.`);
+            }
+
+            // Performs the initial EHLO, since we will later use RSET.
+            this.write_command(new SmtpCommand(SmtpCommandType.Ehlo, null));
+
+            // Waits for the EHLO response, and parses it to check capabilities.
+
+        } else if (response_message_segments.includes("SMTP")) {
+            this._flags.set(SmtpClientFlag.SMTP);
+
+            if (this.config.debug) {
+                this._logger.trace(`Server supports SMTP.`);
+            }
+        } else {
+            this._flags.set(SmtpClientFlag.SMTP);
+
+            if (this.config.debug) {
+                this._logger.trace(`Server did not advertise either SMTP or ESMTP, assuming SMTP (to be safe).`);
+            }
+        }
+
+        // Calls the next method, to either enter IDLE mod or transmit a message.
+        await this.next();
     }
 
-    public async *esmtp_main(): AsyncGenerator<void, void, SmtpResponse> {
+    /**
+     * Gets called when we are done with something, and we want to transmit a new message,
+     *  or if none queued, enter IDLE mode.
+     */
+    public next(): void {
+        // Checks if there are any assignments, if not enter IDLE mode.
+        if (this._assignments.size === 0) {
+            // Enters IDLE mode.
+            if (this.config.debug) {
+                this._logger.trace('Entering IDLE mode, no assignments queued ...');
+            }
+            this.enter_idle_mode();
+            return;
+        }
+
+        // If there is an idle generator running, close it.
+        if (this._state === SmtpClientState.Idle) {
+            clearTimeout(this._idle_noop_interval as NodeJS.Timeout);
+            this._idle_noop_interval = null;
+            (this._generator as AsyncGenerator<void, void, boolean | SmtpResponse>).next(true);
+        }
+
+        // There are assignments, start processing.. So enter busy mode, and call one of the
+        //  generators depending on the server supporting SMTP or ESMTP.
+        if (this.config.debug) {
+            this._logger.trace('Entering busy mode ...');
+        }
+
+        this.enter_busy_mode();
+
+        if (this._flags.get(SmtpClientFlag.SMTP)) {
+            if (this.config.debug) {
+                this._logger.trace('Using SMTP Generator.');
+            }
+            this.use_smtp_generator();
+        } else if (this._flags.get(SmtpClientFlag.ESMTP)) {
+            if (this.config.debug) {
+                this._logger.trace('Using ESMTP Generator.');
+            }
+            this.use_esmtp_generator();
+        } else {
+            throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.Next,
+                'No SMTP or ESMTP flag set.');
+        }
+    }
+
+    public *idle_generator() {
+        // Stays in loop forever.
+        while (true) {
+            // Waits for the next time IDLE generator is called, if the exit is true
+            //  exit the loop.
+            const exit: boolean = (yield) as boolean;
+            if (exit) {
+                break;
+            }
+
+            // Sends the NOOP.
+            this.write_command(new SmtpCommand(SmtpCommandType.Noop, null));
+
+            // Waits for the NOOP response.
+            const response: SmtpResponse = (yield) as SmtpResponse;
+            if (response.status !== 250) {
+                throw new SmtpClientFatalTransactionError(SmtpClientErrorOrigin.GeneratorIDLE,
+                    'NOOP command did not receive valid status of 250',  response);
+            }
+
+            // Since we're being called by a timer, reset it.
+            this._idle_noop_interval?.refresh();
+        }
+    }
+
+    /**
+     * the SMTP generator, this generator gets called when we want to transmit an SMTP message.
+     */
+    public async *smtp_generator(): AsyncGenerator<void, void, SmtpResponse> {
+    }
+
+    /**
+     * the ESMTP generator, this generator gets called when we want to transmit an ESMTP message.
+     */
+    public async *esmtp_generator(): AsyncGenerator<void, void, SmtpResponse> {
         const assignment: SmtpClientAssignment = this._assignments.peek();
         let response: SmtpResponse;
 
+        if (this.config.debug) {
+            this._logger.trace(`ESMTP Generator Started.`);
+        }
+
         // Writes the EHLO command.
-        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Ehlo, [ this.server_domain ]).encode(true));
+        this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Ehlo, [ this.config.server_domain ]).encode(true));
         response = yield;
-        console.log(response);
 
         // Writes the MAIL command.
         this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Mail, [ `FROM:<${assignment.from}>` ]).encode(true));
         response = yield;
-        console.log(response);
 
         // Writes the RCPT command.
         for (const mailbox of assignment.to) {
             this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Rcpt, [ `TO:<${mailbox}>` ]).encode(true));
             response = yield;
-            console.log(response);
         }
 
         // Writes the DATA command.
         this._smtp_socket?.write(new SmtpCommand(SmtpCommandType.Data, null).encode(true));
         response = yield;
-        console.log(response);
 
         // Writes the DATA.
         this.write_data();
         response = yield;
-        console.log(response);
 
-        // The assignment is finished, dequeue it and perform the final actions.
-        assignment.executed(null);
+        // The assignment is finished, call the callback, and dequeue it.
+        assignment.callback(null);
         this._assignments.dequeue();
+
+        // Goes to the next queued email.
+        await this.next();
     }
 }

@@ -29,8 +29,20 @@ export class Queue<T> {
             return;
         }
 
-        // Make it the next of the head.
+        // Make it the next of the head, and makes it the head.
         (this._head as QueueNode<T>).next = node;
+        this._head = node;
+    }
+
+    /**
+     * Prints the queue.
+     */
+    public print(): void {
+        let node: QueueNode<T> | null = this._tail;
+        while (node !== null) {
+            console.log(node);
+            node = node.next;
+        }
     }
 
     /**
