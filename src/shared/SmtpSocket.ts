@@ -1,4 +1,4 @@
-import net from 'net';
+import net, { NetConnectOpts } from 'net';
 import { EventEmitter } from 'stream';
 import tls from 'tls';
 
@@ -34,29 +34,25 @@ export class SmtpSocket extends EventEmitter {
     }
 
     /**
-     * COnnects to the given host and port.
+     * Connects the socket.
+     * @param secure if it's a TLS socket.
      * @param host the host.
      * @param port the port.
-     * @param secure if it is secure.
-     * @returns The PopSocket.
+     * @return the socket.
      */
-    public static connect(host: string, port: number, secure: boolean): Promise<SmtpSocket> {
-        return new Promise<SmtpSocket>((resolve, reject) => {
-            let socket: tls.TLSSocket | net.Socket;
-        
-            if (secure) {
-                socket = tls.connect({
-                    host, port
-                });
-            } else {
-                socket = net.connect({
-                    host, port
-                });
-            }
+    public static connect(secure: boolean, host: string, port: number): SmtpSocket {
+        let socket: net.Socket | tls.TLSSocket;
+        if (secure) {
+            socket = tls.connect({
+                host, port
+            });
+        } else {
+            socket = net.connect({
+                host, port
+            });
+        }
 
-            socket.once('connect', () => resolve(new SmtpSocket(secure, socket)));
-            socket.once('error', (err: Error) => reject(err));
-        });
+        return new SmtpSocket(secure, socket);
     }
 
     /**
@@ -169,7 +165,6 @@ export class SmtpSocket extends EventEmitter {
      */
     protected _event_error(err: Error): void {
         this.socket.destroy();
-
         this.emit('error', err);
     }
 

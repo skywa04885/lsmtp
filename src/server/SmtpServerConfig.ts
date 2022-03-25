@@ -12,8 +12,7 @@ export enum SmtpServerFeatureFlag {
     XClient = (1 << 3),             // XClient command.
     XForward = (1 << 4),            // XForward command.
     Auth = (1 << 5),                // Authentication.
-    BinaryMime = (1 << 6),          // BinaryMIME.
-    EightBitMime = (1 << 7),        // 8BITMIME.
+    EightBitMime = (1 << 6),        // 8BITMIME.
 }
 
 export class SmtpServerConfig {

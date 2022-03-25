@@ -14,6 +14,8 @@ export class SmtpEnhancedStatusCode {
     public static b_MessageContentOrMediaStatus: SmtpEnhancedStatusCode = new SmtpEnhancedStatusCode(0, 6, 0);
     public static b_SecurityOrPolicyStatus: SmtpEnhancedStatusCode = new SmtpEnhancedStatusCode(0, 7, 0);
 
+    public static REGEX: RegExp = /^([0-9]+.[0-9]+.[0-9]+)$/;
+
     public constructor(public readonly a: number,
         public readonly b: number,
         public readonly c: number) { }
@@ -33,6 +35,20 @@ export class SmtpEnhancedStatusCode {
      */
     public encode(): string {
         return `${this.a}.${this.b}.${this.c}`;
+    }
+
+    /**
+     * Decodes the raw string.
+     * @param raw the raw string.
+     * @returns the parsed status code.
+     */
+    public static decode(raw: string): SmtpEnhancedStatusCode {
+        const segments: string[] = raw.split('.');
+        if (segments.length !== 3) {
+            throw new Error('Invalid enhanced status code.');
+        }
+
+        return new SmtpEnhancedStatusCode(parseInt(segments[0]), parseInt(segments[1]), parseInt(segments[2]));
     }
 }
 
@@ -67,5 +83,64 @@ export class SmtpResponse {
         }
 
         return result;
+    }
+
+    /**
+     * Gets the message in string format.
+     */
+    public get message_string(): string {
+        if (this.message === null) {
+            throw new Error('There is no message.');
+        }
+        
+        if (typeof this.message === 'string') {
+            return this.message;
+        }
+
+        return this.message.join('');
+    }
+
+    /**
+     * The generator to decode a response.
+     * @returns the decoded response.
+     */
+    public static *fancy_decode(): Generator<void, SmtpResponse, string> {
+        let status: number | null = null;
+        let message: string[] = [];
+
+        // Reads all the lines, and parses them, we break when we're done.
+        while (true) {
+            // Gets the segment.
+            let segment: string = yield;
+            
+            // Parses the segment.
+            const segment_status: number = parseInt(segment.substring(0, 3));
+            segment = segment.substring(3);
+            const segment_separator: string = segment.charAt(0);
+            segment = segment.substring(1);
+            const segment_message: string = segment;
+
+            // Checks if the code is valid.
+            if (!status) {
+                status = segment_status;
+            } else if (status !== segment_status) {
+                throw new Error('Segment status mismatch.');
+            }
+
+            // Appends the message.
+            message.push(segment_message);
+
+            // Checks if there will be a next segment.
+            if (segment_separator === '-') {
+                continue;
+            } else if (segment_separator === ' ') {
+                break;
+            } else {
+                throw new Error('Invalid segment separator.');
+            }
+        }
+
+        // Returns the result.
+        return new SmtpResponse(status, message);
     }
 }

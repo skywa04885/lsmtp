@@ -1,4 +1,4 @@
-import { SEGMENT_SEPARATOR } from './SmtpConstants';
+import { LINE_SEPARATOR, SEGMENT_SEPARATOR } from './SmtpConstants';
 import { InvalidCommandError } from './SmtpError';
 
 export enum SmtpCommandType {
@@ -55,6 +55,29 @@ export class SmtpCommand {
      */
     public get argument(): string | null {
         return this.args as string | null;
+    }
+
+    public encode(add_newline: boolean = false): string {
+        let arr: string[] = [];
+
+        arr.push(this.type);
+
+        if (this.args !== null) {
+            if (typeof this.args === 'string') {
+                arr.push(this.args.trim());
+            } else {
+                this.args?.forEach((arg: string): void => {
+                    arr.push(arg.trim());
+                });
+            }
+        }
+
+        let result: string = arr.join(SEGMENT_SEPARATOR);
+        if (add_newline) {
+            result += LINE_SEPARATOR;
+        }
+
+        return result;
     }
 
     /**

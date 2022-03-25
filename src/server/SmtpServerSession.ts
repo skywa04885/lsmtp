@@ -54,7 +54,6 @@ export class SmtpServerSession {
         this.from = null;
         this.to = null;
         this.data = null;
-        this.user = null
 
         // Updates the flags.
         this.clear_flags(SmtpServerSessionFlag.Authenticated

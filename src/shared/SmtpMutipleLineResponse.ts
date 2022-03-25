@@ -2,7 +2,7 @@ import { LINE_SEPARATOR, SEGMENT_SEPARATOR } from "./SmtpConstants";
 import { SmtpResponse } from "./SmtpResponse";
 import { SmtpSocket } from "./SmtpSocket";
 
-export class SmtpMultipleLineRespons {
+export class SmtpMultipleLineResponse {
     /**
      * Writes a multiple line response, using a callback method.
      * @param smtp_socket the smtp socket.

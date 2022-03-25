@@ -7,7 +7,7 @@ import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
 import { MAX_INVALID_COMMANDS, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
 import { BadSequenceError, CommandDisabled, InvalidCommandArguments, InvalidCommandError, PolicyError } from "../shared/SmtpError";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
-import { SmtpMultipleLineRespons } from "../shared/SmtpMutipleLineResponse";
+import { SmtpMultipleLineResponse } from "../shared/SmtpMutipleLineResponse";
 import { SMTP_EMAIL_REGEX } from "../shared/SmtpRegexes";
 import { SmtpEnhancedStatusCode, SmtpResponse } from "../shared/SmtpResponse";
 import { SmtpSocket } from "../shared/SmtpSocket";
@@ -20,8 +20,7 @@ import { SmtpServerSession, SmtpServerSessionFlag } from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
 
 export const enum SmtpServerConnectionLineIdentifier {
-    AuthenticationPlain = 0,
-    AuthenticationXOAUTH2 = 1
+    AuthenticationPlain = 0
 }
 
 /**
@@ -75,7 +74,7 @@ function __mail_rcpt_address_parse(raw: string, expected_keyword: string): strin
 
     // Makes sure the address has the valid format.
     if (!address.startsWith('<') || !address.endsWith('>')) {
-        throw new InvalidCommandArguments('Address is not enclosed in \'<\' and \'>\'.');
+        throw new InvalidCommandArguments(`Address '${address}' is not enclosed in \'<\' and \'>\'.`);
     }
 
     // Trims the brackets.
@@ -166,10 +165,16 @@ export class SmtpServerConnection extends EventEmitter {
                 this.smtp_socket.write(new SmtpResponse(550,
                     Messages.general.command_invalid(this),
                     new SmtpEnhancedStatusCode(5, 5, 1)).encode(true));
-                return;
             } else {
                 throw e;
             }
+
+            // Close if too many errors.
+            if (++this.session.invalid_command_count > MAX_INVALID_COMMANDS) {
+                this.smtp_socket.close();
+            }
+
+            return;
         }
 
         // Handles the command.
@@ -289,39 +294,6 @@ export class SmtpServerConnection extends EventEmitter {
                 break;
             }
             //////////////////////////////////
-            /// XOAUTH2 Continuation.
-            //////////////////////////////////
-            case SmtpServerConnectionLineIdentifier.AuthenticationXOAUTH2: {
-                // Goes back to command mode.
-                this.stream.enter_command_mode();
-
-                // Parses the XOAUTH2 token.
-                let token: XOATH2Token;
-                try {
-                    token = XOATH2Token.decode(data.trim());
-                } catch (e) {
-                    throw new InvalidCommandArguments((e as Error).message);
-                }
-
-                // Validates the token.
-                const user: SmtpUser | null = await this.server.config.verify_xoath2(token, this);
-                if (!user) {
-                    this.smtp_socket.write(new SmtpResponse(535, Messages.auth.bad_credentials(this),
-                        new SmtpEnhancedStatusCode(5, 7, 8)).encode(true));
-                    return;
-                }
-
-                // If the credentials are right, set the flags and the user.
-                this.session.set_flags(SmtpServerSessionFlag.Authenticated);
-                this.session.user = user;
-
-                // Sends the success.
-                this.smtp_socket.write(new SmtpResponse(235, Messages.auth._(this),
-                    new SmtpEnhancedStatusCode(2, 7, 0)).encode(true));
-                // Breaks.
-                break;
-            }
-            //////////////////////////////////
             /// Other.
             //////////////////////////////////
             default: {
@@ -353,6 +325,9 @@ export class SmtpServerConnection extends EventEmitter {
         if (result !== null) {
             // TODO: handle this.
         }
+
+        // Performs soft reset.
+        this.session.soft_reset();
 
         // Sends the response.
         this.smtp_socket.write(new SmtpResponse(250, Messages.data.done(this),
@@ -390,6 +365,9 @@ export class SmtpServerConnection extends EventEmitter {
             if (result !== null) {
                 // TODO: handle this.
             }
+
+            // Performs soft reset.
+            this.session.soft_reset();
 
             // Writes the response of the data transfer end.
             this.smtp_socket.write(new SmtpResponse(250, Messages.bdat.done(this),
@@ -459,8 +437,7 @@ export class SmtpServerConnection extends EventEmitter {
             case SmtpAuthType.XOAUTH2: {
                 // Makes sure there are two arguments.
                 if (command.arguments.length !== 2) {
-                    this.stream.enter_line_mode(SmtpServerConnectionLineIdentifier.AuthenticationXOAUTH2);
-                    break;
+                    throw new InvalidCommandArguments();
                 }
 
                 // Parses the XOAUTH2 token.
@@ -693,7 +670,7 @@ export class SmtpServerConnection extends EventEmitter {
         this.session.remote_domain = command.arguments[0].trim();
 
         // Writes the multiline response.
-        SmtpMultipleLineRespons.write_line_callback(this.smtp_socket,
+        SmtpMultipleLineResponse.write_line_callback(this.smtp_socket,
             new SmtpResponse(250, Messages.ehlo._(this)),
             (i: number): { v: string, n: boolean } => {
                 const capability: SmtpCapability = this.server.capabilities[i];

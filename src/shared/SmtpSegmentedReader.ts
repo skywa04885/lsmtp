@@ -48,7 +48,7 @@ export class SmtpDataBuffer {
      */
     public segment(separator = LINE_SEPARATOR, add: number = 0): string | null {
         // Gets the separator index.
-        let index: number = this.buffer.lastIndexOf(separator);
+        let index: number = this.buffer.indexOf(separator);
         if (index === -1) {
             return null;
         }

@@ -149,25 +149,41 @@ export class SmtpStream extends Writable {
 
         // Reads the segment, and if not there just return.
         let segment: string | null;
-        if ((segment = this._buffer.segment(DATA_END, -2 /* -2, preserved '\r\n' */)) === null) {
-            return;
-        }
+        while (true) {
+            // Gets the segment, and if not. Break.
+            if ((segment = this._buffer.segment(DATA_END, -2 /* -2, preserved '\r\n' */)) === null) {
+                break;
+            }
 
-        // We've read the data segment.
-        await this.on_data(segment)
+            // We've read the data segment.
+            await this.on_data(segment);
+
+            // If the mode is different, break.
+            if (this._mode !== SmtpStreamMode.Data) {
+                break;
+            }
+        }
     }
 
     /**
      * Handles a command write.
      */
     protected async _handle_command_write(): Promise<void> {
-        // Reads the segment, and if not there just return.
+        // Reads the segments, and if not there just return.
         let segment: string | null;
-        if ((segment = this._buffer.segment(LINE_SEPARATOR)) === null) {
-            return;
-        }
+        while (true) {
+            // Gets the segment, and if not. Break.
+            if ((segment = this._buffer.segment(LINE_SEPARATOR)) === null) {
+                break;
+            }
 
-        // Calls the command callback.
-        await this.on_command(segment);
+            // Calls the command callback.
+            await this.on_command(segment);
+
+            // If the mode is different, break.
+            if (this._mode !== SmtpStreamMode.Command) {
+                break;
+            }
+        }
     }
 }

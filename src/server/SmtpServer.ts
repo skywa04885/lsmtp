@@ -43,9 +43,6 @@ export class SmtpServer extends EventEmitter {
         if (this.config.feature_enabled(SmtpServerFeatureFlag.Chunking)) {
             this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Chunking));
         }
-        if (this.config.feature_enabled(SmtpServerFeatureFlag.BinaryMime)) {
-            this.capabilities.push(new SmtpCapability(SmtpCapabilityType.BinaryMIME));
-        }
         if (this.config.feature_enabled(SmtpServerFeatureFlag.Expn)) {
             this.capabilities.push(new SmtpCapability(SmtpCapabilityType.Expn));
         }
@@ -131,6 +128,7 @@ export class SmtpServer extends EventEmitter {
     protected _event_connection(secure: boolean, socket: net.Socket | tls.TLSSocket): void {
         const smtp_socket: SmtpSocket = new SmtpSocket(secure, socket);
         smtp_socket.on('close', (_: boolean) => this.emit('client_disconnected', secure, smtp_socket));
+        smtp_socket.on('error', () => {})
         smtp_socket.set_timeout(this.timeout);
 
         const session: SmtpServerSession = new SmtpServerSession();
