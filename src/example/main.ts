@@ -14,5 +14,3 @@ import { SmtpSocket } from "../shared/SmtpSocket";
 import {SmtpClientManager} from "../client/SmtpClientManager";
 import {SmtpConfig} from "../shared/SmtpConfig";
 
-
-let manager = new SmtpClientManager(config.client);

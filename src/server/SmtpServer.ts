@@ -127,8 +127,7 @@ export class SmtpServer extends EventEmitter {
      */
     protected _event_connection(secure: boolean, socket: net.Socket | tls.TLSSocket): void {
         const smtp_socket: SmtpSocket = new SmtpSocket(secure, socket);
-        smtp_socket.on('close', (_: boolean) => this.emit('client_disconnected', secure, smtp_socket));
-        smtp_socket.on('error', () => {})
+        smtp_socket.on('close', () => this.emit('client_disconnected', secure, smtp_socket));
         smtp_socket.set_timeout(this.timeout);
 
         const session: SmtpServerSession = new SmtpServerSession();

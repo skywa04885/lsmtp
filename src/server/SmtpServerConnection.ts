@@ -102,10 +102,10 @@ export class SmtpServerConnection extends EventEmitter {
             (data: string) => this.on_data(data),
             () => this.on_data_max_reached(),
             (data: string, identifier: string | number | null) => this.on_line(data, identifier));
-        this.smtp_socket.socket.pipe(this.stream);
+        this.smtp_socket.socket!.pipe(this.stream);
 
         // Registers the event listeners.
-        this.smtp_socket.on('close', (had_error: boolean) => this._event_close(had_error));
+        this.smtp_socket.on('close', () => this._event_close());
     }
 
     /**
@@ -122,7 +122,7 @@ export class SmtpServerConnection extends EventEmitter {
      * Gets called when the socket closed.
      * @param had_error if there was an error (net-only).
      */
-    protected _event_close(had_error: boolean): void {
+    protected _event_close(): void {
     }
 
     /**

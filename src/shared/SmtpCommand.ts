@@ -21,6 +21,7 @@ export enum SmtpCommandType {
     Send = 'SEND',
     XClient = 'XCLIENT',
     XForward = 'XFORWARD',
+    StartTLS = 'STARTTLS',
 }
 
 export class SmtpCommand {
