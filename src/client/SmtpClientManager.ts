@@ -1,4 +1,4 @@
-import { SmtpClient, SmtpClientConfig } from "./SmtpClient";
+import { SmtpClient } from "./SmtpClient";
 import { SmtpClientAssignment } from "./SmtpCommanderAssignment";
 import {SmtpClientPool} from "./SmtpClientPool";
 

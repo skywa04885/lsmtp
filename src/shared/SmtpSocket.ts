@@ -1,12 +1,13 @@
 import net, { NetConnectOpts } from 'net';
 import { EventEmitter } from 'events';
 import tls from 'tls';
+import assert from 'assert';
 
 export declare interface SmtpSocket {
     on(event: 'close', listener: () => void): this;
     on(event: 'connect', listener: () => void): this;
     on(event: 'upgrade', listener: () => void): this;
-    on(event: 'data', listener: () => void): this;
+    on(event: 'data', listener: (chunk: Buffer) => void): this;
 }
 
 export class SmtpSocket extends EventEmitter {
@@ -15,7 +16,7 @@ export class SmtpSocket extends EventEmitter {
      * @param secure if the socket is secure.
      * @param socket the socket.
      */
-    public constructor (public secure: boolean, public socket?: net.Socket | tls.TLSSocket) {
+    public constructor(public secure: boolean, public socket?: net.Socket | tls.TLSSocket) {
         super();
 
         if (!socket) {
@@ -25,6 +26,134 @@ export class SmtpSocket extends EventEmitter {
         this._initialize();
     }
 
+    ////////////////////////////////////////////////
+    // Private Instance Methods
+    ////////////////////////////////////////////////
+
+    /**
+     * Initializes the socket, and does stuff such as registering the events.
+     */
+    protected _initialize(): void {
+        this._assert_socket();
+
+        this.socket!.on('close', () => this._event_close());
+        this.socket!.on('data', (data: Buffer) => this._event_data(data));
+        this.socket!.on('error', (err: Error) => this._event_error(err));
+        this.socket!.on('timeout', () => this._event_timeout());
+    }
+
+    /**
+     * Asserts the socket exists.
+     */
+    protected _assert_socket(): void {
+        assert.notEqual(this.socket, undefined, "This operation is ony allowed with a valid socket.");
+    }
+
+    /**
+     * Asserts that the socket does not exists.
+     */
+    protected _assert_not_socket(): void {
+        assert.equal(this.socket, undefined, "This operation is only allowed when there is no socket yet.");
+    }
+
+    ////////////////////////////////////////////////
+    // Getters
+    ////////////////////////////////////////////////
+
+    /**
+     * Gets the address string.
+     */
+    public get address(): string {
+        this._assert_socket();
+
+        if (!this.socket!.remoteAddress) {
+            throw new Error('Socket is not connected!');
+        }
+
+        return this.socket!.remoteAddress;
+    }
+
+    /**
+     * Gets the port.
+     */
+    public get port(): number {
+        this._assert_socket();
+
+        if (!this.socket!.remotePort) {
+            throw new Error('Socket is not connected!');
+        }
+
+        return this.socket!.remotePort;
+    }
+
+    /**
+     * Gets the socket family.
+     */
+    public get family(): string {
+        this._assert_socket();
+
+        if (!this.socket!.remoteFamily) {
+            throw new Error('Socket is not connected!');
+        }
+
+        return this.socket!.remoteFamily;
+    }
+
+    ////////////////////////////////////////////////
+    // Instance Methods
+    ////////////////////////////////////////////////
+
+    /**
+     * Closes the socket.
+     */
+    public close(): void {
+        this._assert_socket();
+
+        this.socket!.end();
+    }
+
+    /**
+     * Pauses.
+     */
+    public pause(): void {
+        this._assert_socket();
+
+        this.socket!.pause();
+    }
+
+    /**
+     * Resumes.
+     */
+    public resume(): void {
+        this._assert_socket();
+
+        this.socket!.resume();
+    }
+
+    /**
+     * Sets the socket timeout.
+     * @param timeout the timeout.
+     * @returns ourselves.
+     */
+    public set_timeout(timeout: number): SmtpSocket {
+        this._assert_socket();
+
+        this.socket!.setTimeout(timeout);
+
+        return this;
+    }
+
+    /**
+     * Writes the given data to the socket.
+     * @param data the data to write.
+     * @returns All written.
+     */
+    public write(data: string | Buffer): boolean {
+        this._assert_socket();
+
+        return this.socket!.write(data);
+    }
+
     /**
      * Connects the socket.
      * @param secure if it's a TLS socket.
@@ -32,6 +161,8 @@ export class SmtpSocket extends EventEmitter {
      * @param port the port.
      */
     public connect(secure: boolean, host: string, port: number): void {
+        this._assert_not_socket();
+
         if (secure) {
             this.socket = tls.connect({
                 host, port
@@ -47,99 +178,23 @@ export class SmtpSocket extends EventEmitter {
      * Upgrades the current socket to TLS.
      */
     public upgrade(): void {
+        this._assert_socket();
+
         if (this.secure) {
-            throw new Error('Socket is already a TLS socket.');
+            return;
         }
 
         this.secure = true;
         this.socket = tls.connect({
-            socket: this.socket
+            socket: this.socket,
+            rejectUnauthorized: false,
         }, () => this._event_upgrade());
     }
 
-    /**
-     * Initializes the socket, and does stuff such as registering the events.
-     */
-    protected _initialize(): void {
-        this.socket!.on('close', () => this._event_close());
-        this.socket!.on('data', (data: Buffer) => this._event_data(data));
-        this.socket!.on('error', (err: Error) => this._event_error(err));
-        this.socket!.on('timeout', () => this._event_timeout());
-    }
 
-    /**
-     * Closes the socket.
-     */
-    public close(): void {
-        this.socket!.end();
-    }
-
-    /**
-     * Pauses.
-     */
-    public pause(): void {
-        this.socket!.pause();
-    }
-
-    /**
-     * Resumes.
-     */
-    public resume(): void {
-        this.socket!.resume();
-    }
-
-    /**
-     * Gets the address string.
-     */
-    public get address(): string {
-        if (!this.socket!.remoteAddress) {
-            throw new Error('Socket is not connected!');
-        }
-
-        return this.socket!.remoteAddress;
-    }
-
-    /**
-     * Gets the port.
-     */
-    public get port(): number {
-        if (!this.socket!.remotePort) {
-            throw new Error('Socket is not connected!');
-        }
-
-        return this.socket!.remotePort;
-    }
-
-    /**
-     * Gets the socket family.
-     */
-    public get family(): string {
-        if (!this.socket!.remoteFamily) {
-            throw new Error('Socket is not connected!');
-        }
-
-        return this.socket!.remoteFamily;
-    }
-
-    /**
-     * Sets the socket timeout.
-     * @param timeout the timeout.
-     * @returns ourselves.
-     */
-    public set_timeout(timeout: number): SmtpSocket {
-        this.socket!.setTimeout(timeout);
-
-        return this;
-    }
-
-    /**
-     * Writes the given data to the socket.
-     * @param data the data to write.
-     * @returns All written.
-     */
-    public write(data: string | Buffer): boolean {
-        return this.socket!.write(data);
-    }
+    ////////////////////////////////////////////////
+    // Event Listeners
+    ////////////////////////////////////////////////
 
     /**
      * Gets called when the socket was closed.
@@ -170,7 +225,7 @@ export class SmtpSocket extends EventEmitter {
      */
     protected _event_timeout(): void {
         this.socket!.end();
-        
+
         this.emit('timeout');
     }
 
@@ -189,6 +244,8 @@ export class SmtpSocket extends EventEmitter {
      * Gets called when the socket is upgraded.
      */
     protected _event_upgrade(): void {
+        this._initialize();
+
         this.emit('upgrade');
     }
 }

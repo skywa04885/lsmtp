@@ -13,12 +13,10 @@ export class SmtpClientStream extends Writable {
     protected _response_decode_state: Generator<void, SmtpResponse, string> | null = null;
 
     /**
-     * Constructs a new SMTP stream.
+     * Constructs a new SMTP client stream.
      * @param options the options.
-     * @param on_response gets called when we've got a new response.
      */
-    public constructor(options: WritableOptions,
-        public readonly on_response: (response: SmtpResponse) => Promise<void>) {
+    public constructor(options?: WritableOptions) {
         super(options);
     }
 
@@ -84,12 +82,8 @@ export class SmtpClientStream extends Writable {
                 continue;
             }
 
-            // Calls the command callback, and if an error occurs, emit it.
-            try {
-                await this.on_response(result.value);
-            } catch (e) {
-                this.emit('error', e);
-            }
+            // Emits the response event.
+            this.emit('response', result.value);
 
             // Clears the state.
             this._response_decode_state = null;

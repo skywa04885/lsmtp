@@ -13,4 +13,13 @@ import { SmtpClient } from "../client/SmtpClient";
 import { SmtpSocket } from "../shared/SmtpSocket";
 import {SmtpClientManager} from "../client/SmtpClientManager";
 import {SmtpConfig} from "../shared/SmtpConfig";
+import { SmtpClientCommander } from "../client/SmtpClientCommander";
 
+let client = new SmtpClient({
+    debug: true
+});
+
+let commander = new SmtpClientCommander(client, {
+    debug: true
+});
+client.connect('contabo.de', 25, false, true);

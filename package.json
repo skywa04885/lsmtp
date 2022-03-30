@@ -4,6 +4,7 @@
     "prettier": "^2.6.1"
   },
   "dependencies": {
-    "lxoauth2": "^1.0.4"
+    "lxoauth2": "^1.0.4",
+    "node-ts": "^5.1.2"
   }
 }

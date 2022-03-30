@@ -1,8 +1,9 @@
 import {Flags} from "../helpers/Flags";
+import { SmtpServerFeatureFlag } from "../server/SmtpServerConfig";
 import {SmtpCapability, SmtpCapabilityType} from "../shared/SmtpCapability";
 import {SmtpClientErrorOrigin, SmtpClientFatalTransactionError} from "./SmtpClientError";
 
-export enum SmtpClientServerFeatures {
+export enum SmtpCommanderServerFeatures {
     Pipelining = (1 << 0),
     StartTLS = (1 << 1),
     EightBitMime = (1 << 2),
@@ -13,13 +14,25 @@ export enum SmtpClientServerFeatures {
     Expand = (1 << 7),
 }
 
-export interface SmtpClientServerOpts {
+export interface SmtpCommanderServerOpts {
     max_message_size: number | null;
     features: Flags;
 }
 
-export function smtp_client_server_opts_from_capabilities(capabilities: SmtpCapability[]): SmtpClientServerOpts {
-    let result: SmtpClientServerOpts = {
+export function smtp_commander_server_opts_flags_string(opts: SmtpCommanderServerOpts) {
+    let arr: string[] = [];
+
+    for (const [key, value] of Object.entries(SmtpCommanderServerFeatures)) {
+        if (opts.features.are_set(value as number)) {
+            arr.push(key);
+        }
+    }
+
+    return arr.join(', ');
+}
+
+export function smtp_client_server_opts_from_capabilities(capabilities: SmtpCapability[]): SmtpCommanderServerOpts {
+    let result: SmtpCommanderServerOpts = {
         max_message_size: null,
         features: new Flags(),
     };
@@ -28,25 +41,28 @@ export function smtp_client_server_opts_from_capabilities(capabilities: SmtpCapa
     capabilities.forEach((capability: SmtpCapability): void => {
         switch (capability.type) {
             case SmtpCapabilityType.Auth:
-                result.features.set(SmtpClientServerFeatures.Authentication);
+                result.features.set(SmtpCommanderServerFeatures.Authentication);
                 break;
             case SmtpCapabilityType.Chunking:
-                result.features.set(SmtpClientServerFeatures.Chunking);
+                result.features.set(SmtpCommanderServerFeatures.Chunking);
                 break;
             case SmtpCapabilityType.Vrfy:
-                result.features.set(SmtpClientServerFeatures.Verification);
+                result.features.set(SmtpCommanderServerFeatures.Verification);
                 break;
             case SmtpCapabilityType.Expn:
-                result.features.set(SmtpClientServerFeatures.Expand);
+                result.features.set(SmtpCommanderServerFeatures.Expand);
                 break;
             case SmtpCapabilityType.EightBitMIME:
-                result.features.set(SmtpClientServerFeatures.EightBitMime);
+                result.features.set(SmtpCommanderServerFeatures.EightBitMime);
                 break;
             case SmtpCapabilityType.SmtpUTF8:
-                result.features.set(SmtpClientServerFeatures.SMTP_UTF8);
+                result.features.set(SmtpCommanderServerFeatures.SMTP_UTF8);
                 break;
             case SmtpCapabilityType.Pipelining:
-                result.features.set(SmtpClientServerFeatures.Pipelining);
+                result.features.set(SmtpCommanderServerFeatures.Pipelining);
+                break;
+            case SmtpCapabilityType.StartTLS:
+                result.features.set(SmtpCommanderServerFeatures.StartTLS);
                 break;
             case SmtpCapabilityType.Size: {
                 const args: string[] = capability.args as string[];
