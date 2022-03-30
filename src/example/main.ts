@@ -11,15 +11,63 @@
 
 import { SmtpClient } from "../client/SmtpClient";
 import { SmtpSocket } from "../shared/SmtpSocket";
-import {SmtpClientManager} from "../client/SmtpClientManager";
-import {SmtpConfig} from "../shared/SmtpConfig";
+import { SmtpClientManager } from "../client/SmtpClientManager";
+import { SmtpConfig } from "../shared/SmtpConfig";
 import { SmtpClientCommander } from "../client/SmtpClientCommander";
+import { SmtpClientAssignment } from "../client/SmtpCommanderAssignment";
+import {
+  mime_compose,
+  MimeComposition,
+  MimeContentType,
+  MimeDateValue,
+  MimeEmailValue,
+} from "llibmime";
 
 let client = new SmtpClient({
-    debug: true
+  debug: true,
 });
 
 let commander = new SmtpClientCommander(client, {
-    debug: true
+  debug: true,
 });
-client.connect('contabo.de', 25, false, true);
+client.connect("gmail.com", 25, false, true);
+
+commander.on("ready", () => {
+  let comp = new MimeComposition("unset.local");
+  comp.subject = "Hello World";
+  comp.to = new MimeEmailValue([
+    { name: null, address: "luke.rieff@gmail.com" },
+  ]);
+  comp.from = new MimeEmailValue([
+    { name: null, address: "luke.rieff@fannst.nl" },
+  ]);
+  comp.date = new MimeDateValue();
+  comp.add_text_section(
+    MimeContentType.TextPlain,
+    "Hello luke! THis is a test message from the SMTP server."
+  );
+  comp.add_text_section(
+    MimeContentType.TextHTML,
+    "<h1>Hello luke! THis is a test message from the SMTP server.</h1>"
+  );
+
+
+  commander.assign({
+    from: "luke.rieff@fannst.nl",
+    to: ["luke.rieff@gmail.com"],
+    data: mime_compose(comp, false),
+    callback: () => console.log("done"),
+  });
+  commander.assign({
+    from: "luke.rieff@fannst.nl",
+    to: ["luke.rieff@gmail.com"],
+    data: mime_compose(comp, false),
+    callback: () => console.log("done"),
+  });commander.assign({
+    from: "luke.rieff@fannst.nl",
+    to: ["luke.rieff@gmail.com"],
+    data: mime_compose(comp, false),
+    callback: () => console.log("done"),
+  });
+
+});

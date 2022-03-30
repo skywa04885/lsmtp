@@ -54,7 +54,7 @@ export class SmtpClient extends EventEmitter {
   // Getters
   ////////////////////////////////////////////////
 
-  public get socket(): SmtpSocket {
+  public get smtp_socket(): SmtpSocket {
     return this._smtp_socket;
   }
 
@@ -114,6 +114,8 @@ export class SmtpClient extends EventEmitter {
   }
 
   public cmd(command: SmtpCommand) {
+    this._logger?.info(`>> ${command.encode(false)}`);
+
     const command_encoded: string = command.encode(true);
     this._smtp_socket!.write(command_encoded);
   }
@@ -187,9 +189,7 @@ export class SmtpClient extends EventEmitter {
   ////////////////////////////////////////////////
 
   protected _handle_response(response: SmtpResponse): void {
-    if (this._debug) {
-      this._logger!.trace('Response event triggered.');
-    }
+    this._logger?.info(`<< ${response.encode(false)}`);
     
     this.emit('response', response);
   }

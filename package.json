@@ -4,6 +4,8 @@
     "prettier": "^2.6.1"
   },
   "dependencies": {
+    "llibencoding": "^1.0.6",
+    "llibmime": "^1.0.1",
     "lxoauth2": "^1.0.4",
     "node-ts": "^5.1.2"
   }
