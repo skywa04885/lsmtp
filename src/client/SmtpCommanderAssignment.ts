@@ -1,8 +1,10 @@
+import { Readable } from "stream";
+
 export interface SmtpClientAssignment {
     // Data.
     from: string;
     to: string[];
-    data: string | null;
+    data: Readable;
     // Callbacks.
     callback: (err: Error | null) => void;
 }

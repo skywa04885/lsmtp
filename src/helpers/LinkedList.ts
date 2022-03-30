@@ -48,6 +48,32 @@ export class LinkedList<T> {
     }
 
     /**
+     * Pops the head of the linked list.
+     * @returns the data.
+     */
+    public pop_head(): T {
+        if (this.empty) {
+            throw new Error('Linked list is empty.');
+        }
+
+        // Gets the original node.
+        const node: LinkedListNode<T> = this._head!;
+
+        // Removes the element from the tail.
+        if (--this._size === 0) {
+            // Sets the head and tail to null.
+            this._tail = this._head = null;
+        } else {
+            let new_head: LinkedListNode<T> = this._head!.prev!;
+            new_head.next = null;
+            this._head = new_head;
+        }
+
+        // Returns the popped data.
+        return node.data;
+    }
+
+    /**
      * Gets the head of the linked list.
      */
     public get head(): T {
@@ -91,8 +117,8 @@ export class LinkedList<T> {
             throw new Error('Linked list is empty.');
         }
 
-        // @ts-ignore
-        const node: LinkedListNode<T> = this._tail;
+        // Gets the original node.
+        const node: LinkedListNode<T> = this._tail!;
 
         // Removes the element from the tail.
         if (--this._size === 0) {
@@ -100,13 +126,48 @@ export class LinkedList<T> {
             this._tail = this._head = null;
         } else {
             // Makes the next of the tail, the new tail.
-            let new_tail: LinkedListNode<T> = (this._tail?.next as LinkedListNode<T>);
+            let new_tail: LinkedListNode<T> = this._tail!.next!;
             new_tail.prev = null;
             this._tail = new_tail;
         }
 
         // Returns the popped data.
         return node.data;
+    }
+
+    /**
+     * Removes an matching item from the linked list.
+     * @param needle the needle to search for.
+     */
+    public remove(needle: T): void {
+        if (this.empty) {
+            throw new Error('Linked list is empty.');
+        }
+
+        let node: LinkedListNode<T> | null = this._tail;
+        while (node !== null) {
+            // If not the node we're looking for, continue.
+            if (node.data !== needle) {
+                node = node.next;
+                continue;
+            }
+
+            // Gets the previous and next node.
+            let prev: LinkedListNode<T> | null = node.prev;
+            let next: LinkedListNode<T> | null = node.next;
+
+            // Updates the previous and next node.
+            if (prev) {
+                prev.next = next;
+            }
+            if (next) {
+                next.prev = prev;
+            }
+
+            // Decreases the size, and breaks.
+            --this._size;
+            break;
+        }
     }
 
     /**
