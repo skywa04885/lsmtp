@@ -11,7 +11,7 @@
 
 import { SmtpClient } from "../client/SmtpClient";
 import { SmtpSocket } from "../shared/SmtpSocket";
-import { SmtpClientManager } from "../client/SmtpClientManager";
+import {SmtpClientManager, SmtpClientManagerAssignment} from "../client/SmtpClientManager";
 import { SmtpConfig } from "../shared/SmtpConfig";
 import { SmtpClientCommander } from "../client/SmtpClientCommander";
 import { SmtpClientAssignment } from "../client/SmtpCommanderAssignment";
@@ -23,51 +23,76 @@ import {
   MimeEmailValue,
 } from "llibmime";
 
-let client = new SmtpClient({
-  debug: true,
-});
+let comp = new MimeComposition("fannst.nl");
+comp.subject = "Hello World";
+comp.to = new MimeEmailValue([
+  { name: null, address: "luke.rieff@gmail.com" },
+]);
+comp.from = new MimeEmailValue([
+  { name: null, address: "doesnotexist@fannst.nl" },
+]);
+comp.date = new MimeDateValue();
+comp.add_text_section(
+  MimeContentType.TextPlain,
+  "Hello luke! THis is a test message from the SMTP server."
+);
+comp.add_text_section(
+  MimeContentType.TextHTML,
+  "<h1>Hello luke! THis is a test message from the SMTP server.</h1>"
+);
 
-let commander = new SmtpClientCommander(client, {
-  debug: true,
-});
-client.connect("gmail.com", 25, false, true);
+let a = mime_compose(comp, false);
 
-commander.on("ready", () => {
-  let comp = new MimeComposition("unset.local");
-  comp.subject = "Hello World";
-  comp.to = new MimeEmailValue([
-    { name: null, address: "luke.rieff@gmail.com" },
-  ]);
-  comp.from = new MimeEmailValue([
-    { name: null, address: "luke.rieff@fannst.nl" },
-  ]);
-  comp.date = new MimeDateValue();
-  comp.add_text_section(
-    MimeContentType.TextPlain,
-    "Hello luke! THis is a test message from the SMTP server."
-  );
-  comp.add_text_section(
-    MimeContentType.TextHTML,
-    "<h1>Hello luke! THis is a test message from the SMTP server.</h1>"
-  );
+(async function () {
+  let buffers: Buffer[] = [];
+  for await (let chunk of a) {
+    if (typeof chunk === 'string') {
+      chunk = Buffer.from(chunk);
+    }
+    buffers.push(chunk);
+  }
 
+  const buffer: Buffer = Buffer.concat(buffers);
 
-  commander.assign({
-    from: "luke.rieff@fannst.nl",
-    to: ["luke.rieff@gmail.com"],
-    data: mime_compose(comp, false),
-    callback: () => console.log("done"),
-  });
-  commander.assign({
-    from: "luke.rieff@fannst.nl",
-    to: ["luke.rieff@gmail.com"],
-    data: mime_compose(comp, false),
-    callback: () => console.log("done"),
-  });commander.assign({
-    from: "luke.rieff@fannst.nl",
-    to: ["luke.rieff@gmail.com"],
-    data: mime_compose(comp, false),
-    callback: () => console.log("done"),
+  const smtp_client_manager: SmtpClientManager = new SmtpClientManager({
+    pool_options: {
+      client_options: {
+        debug: true,
+      },
+      commander_options: {
+        max_assignments: 2,
+        debug: true,
+      },
+      debug: true,
+    },
+    debug: true,
   });
 
-});
+  const smtp_client_manager_assignment: SmtpClientManagerAssignment = new SmtpClientManagerAssignment(
+    [ 'luke.rieff@gmail.com', 'luke.rieff@yahoo.com' ],
+    'nonexisting@fannst.nl', buffer);
+
+  await smtp_client_manager.assign(smtp_client_manager_assignment);
+  await smtp_client_manager.assign(smtp_client_manager_assignment);
+  await smtp_client_manager.assign(smtp_client_manager_assignment);
+  await smtp_client_manager.assign(smtp_client_manager_assignment);
+})();
+
+// let client = new SmtpClient({
+//   debug: true,
+// });
+//
+// let commander = new SmtpClientCommander(client, {
+//   debug: true,
+// });
+// client.connect("gmail.com", 25, false, true);
+//
+// commander.on("ready", () => {
+//   commander.assign({
+//     from: "doesnotexist@fannst.nl",
+//     to: ["luke.rieff@gmail.com"],
+//     data: mime_compose(comp, false),
+//     callback: () => console.log("done"),
+//   });
+//
+// });

@@ -13,9 +13,14 @@ export interface SmtpClientOptions {
 
 export declare interface SmtpClient {
   once(event: "upgrade", listener: () => void): this;
+
   on(event: "upgrade", listener: () => void): this;
+
   once(event: "response", listener: (response: SmtpResponse) => void): this;
+
   on(event: "response", listener: (response: SmtpResponse) => void): this;
+
+  once(event: 'close', listener: () => void): this;
 }
 
 export class SmtpClient extends EventEmitter {
@@ -33,21 +38,25 @@ export class SmtpClient extends EventEmitter {
 
     // Creates the logger if needed.
     if (this._debug) {
-      this._logger = new Logger('SmtpClient');
+      this._logger = new Logger("SmtpClient");
     }
 
     // Creates the instance variables.
     this._smtp_socket = new SmtpSocket(false);
     this._smtp_stream = new SmtpClientStream();
-    
+
     // Registers the standard event listeners (for the socket).
-    this._smtp_socket.on('connect', () => this._handle_connect());
-    this._smtp_socket.on('upgrade', () => this._handle_upgrade());
-    this._smtp_socket.on('data', (chunk: Buffer) => this._smtp_stream.write(chunk));
-    this._smtp_socket.on('close', () => this._handle_close());
+    this._smtp_socket.on("connect", () => this._handle_connect());
+    this._smtp_socket.on("upgrade", () => this._handle_upgrade());
+    this._smtp_socket.on("data", (chunk: Buffer) =>
+      this._smtp_stream.write(chunk)
+    );
+    this._smtp_socket.on("close", () => this._handle_close());
 
     // Registers the standard event listener (for the stream).
-    this._smtp_stream.on('response', (response: SmtpResponse) => this._handle_response(response));
+    this._smtp_stream.on("response", (response: SmtpResponse) =>
+      this._handle_response(response)
+    );
   }
 
   ////////////////////////////////////////////////
@@ -62,7 +71,9 @@ export class SmtpClient extends EventEmitter {
   // Protected Static Methods
   ////////////////////////////////////////////////
 
-  protected static async _get_mx_exchanges(hostname: string): Promise<string[]> {
+  protected static async _get_mx_exchanges(
+    hostname: string
+  ): Promise<string[]> {
     return await SmtpClientDNS.mx(hostname);
   }
 
@@ -77,7 +88,12 @@ export class SmtpClient extends EventEmitter {
    * @param secure if we're using a secure socket.
    * @param use_mx if we should solve for mx.
    */
-  public async connect(hostname: string, port: number, secure: boolean, use_mx: boolean): Promise<void> {
+  public async connect(
+    hostname: string,
+    port: number,
+    secure: boolean,
+    use_mx: boolean
+  ): Promise<void> {
     let exchange: string;
 
     // Checks if we're using MX, if so resolve the MX records, else just set
@@ -91,7 +107,7 @@ export class SmtpClient extends EventEmitter {
       // Gets the exchanges.
       const exchanges: string[] = await SmtpClient._get_mx_exchanges(hostname);
       if (exchanges.length === 0) {
-        throw new Error('Could not find any exchange from MX records.');
+        throw new Error("Could not find any exchange from MX records.");
       }
 
       // Uses the first exchange (highest rank).
@@ -169,7 +185,7 @@ export class SmtpClient extends EventEmitter {
   }
 
   public cmd_vrfy_address(address: string): void {
-    this.cmd(new SmtpCommand(SmtpCommandType.Vrfy, [`<${address}>`]))
+    this.cmd(new SmtpCommand(SmtpCommandType.Vrfy, [`<${address}>`]));
   }
 
   public cmd_vrfy_name(name: string): void {
@@ -190,8 +206,8 @@ export class SmtpClient extends EventEmitter {
 
   protected _handle_response(response: SmtpResponse): void {
     this._logger?.info(`<< ${response.encode(false)}`);
-    
-    this.emit('response', response);
+
+    this.emit("response", response);
   }
 
   /**
@@ -199,10 +215,14 @@ export class SmtpClient extends EventEmitter {
    */
   protected _handle_connect() {
     if (this._debug) {
-      this._logger!.trace('Connect event triggered.');
+      this._logger!.trace("Connect event triggered.");
     }
 
-    this.emit('connect');
+    if (this._logger) {
+      this._logger = new Logger(`SmtpClient:${this._smtp_socket.address}`);
+    }
+
+    this.emit("connect");
   }
 
   /**
@@ -210,10 +230,10 @@ export class SmtpClient extends EventEmitter {
    */
   protected _handle_upgrade() {
     if (this._debug) {
-      this._logger!.trace('Upgrade event triggered.');
+      this._logger!.trace("Upgrade event triggered.");
     }
 
-    this.emit('upgrade');
+    this.emit("upgrade");
   }
 
   /**
@@ -221,9 +241,9 @@ export class SmtpClient extends EventEmitter {
    */
   protected _handle_close() {
     if (this._debug) {
-      this._logger!.trace('Close event triggered.');
+      this._logger!.trace("Close event triggered.");
     }
 
-    this.emit('close');
+    this.emit("close");
   }
 }

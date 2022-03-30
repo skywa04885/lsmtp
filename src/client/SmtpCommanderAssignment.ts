@@ -4,7 +4,7 @@ export interface SmtpClientAssignment {
     // Data.
     from: string;
     to: string[];
-    data: Readable;
+    data: Buffer;
     // Callbacks.
     callback: (err: Error | null) => void;
 }
