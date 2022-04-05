@@ -69,12 +69,11 @@ let a = mime_compose(comp, false);
   });
 
   const smtp_client_manager_assignment: SmtpClientManagerAssignment = new SmtpClientManagerAssignment(
-    [ 'luke.rieff@yahoo.com' ],
+    [ 'luke.rieff@yandex.ru' ],
     'nonexisting@fannst.nl', buffer, result => {
       result.forEach(a => console.log(a))
     });
 
-  await smtp_client_manager.assign(smtp_client_manager_assignment);
   await smtp_client_manager.assign(smtp_client_manager_assignment);
   await smtp_client_manager.assign(smtp_client_manager_assignment);
   await smtp_client_manager.assign(smtp_client_manager_assignment);

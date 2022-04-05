@@ -25,12 +25,13 @@ export interface SmtpClientAssignmentError_SocketError
 
 export interface SmtpClientAssignmentError_CommandError
   extends SmtpClientAssignmentError {
-  command?: SmtpCommand;
   response: SmtpResponse;
 }
 
 export interface SmtpClientAssignmentError_RecipientUnreachable
-  extends SmtpClientAssignmentError_CommandError {}
+  extends SmtpClientAssignmentError_CommandError {
+  recipient: string;
+}
 
 export interface SmtpClientAssignmentResult {
   transfer_start: Date;

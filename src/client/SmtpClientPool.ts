@@ -19,8 +19,6 @@ export declare interface SmtpClientPool {
   on(event: "destroy", listener: () => void): this;
 }
 
-const SmtpClientPoolLogger: Logger = new Logger("SmtpClientPool");
-
 export class SmtpClientPool extends EventEmitter {
   protected _hostname: string;
   protected _port: number;
@@ -29,6 +27,7 @@ export class SmtpClientPool extends EventEmitter {
   protected _client_options?: SmtpClientOptions;
   protected _commander_options?: SmtpClientCommanderOptions;
   protected _debug: boolean;
+  protected _logger?: Logger;
 
   protected _nodes: LinkedList<SmtpClientCommander>;
 
@@ -49,6 +48,14 @@ export class SmtpClientPool extends EventEmitter {
     this._client_options = options.client_options;
     this._commander_options = options.commander_options;
     this._debug = options.debug ?? false;
+
+    // Creates the logger.
+    if (this._debug) {
+      this._logger = new Logger(`SmtpClientPool(${this._hostname})`);
+    }
+
+    // Logs the base.
+    this._logger?.trace(`Client pool created for ${this._secure ? 'TLS' : 'PLAIN'} ${this._hostname}:${this._port}`);
 
     // Sets the default values for the instance variables.
     this._nodes = new LinkedList<SmtpClientCommander>();
@@ -76,7 +83,13 @@ export class SmtpClientPool extends EventEmitter {
       // Removes the commander.
       this._nodes.remove(commander);
 
+      // Checks if there are assignments left.
+      if (commander.assignment_queue.empty) {
+        return;
+      }
+
       // Enqueues the assignment to another commander.
+      this._logger?.trace(`Transferring unhandled assignments to new clients ...`);
       while (!commander.assignment_queue.empty) {
         this.assign(commander.assignment_queue.dequeue());
       }

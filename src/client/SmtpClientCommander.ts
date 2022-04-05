@@ -14,13 +14,14 @@ import {
   SmtpClientAssignment,
   SmtpClientAssignmentError,
   SmtpClientAssignmentError_CommandError,
+  SmtpClientAssignmentError_MailExchange,
+  SmtpClientAssignmentError_RecipientUnreachable,
   SmtpClientAssignmentError_SocketError,
   SmtpClientAssignmentErrorType,
 } from "./SmtpCommanderAssignment";
 import { Queue } from "../helpers/Queue";
 import { DotEscapeEncodeStream } from "llibencoding";
 import { Readable } from "stream";
-import {SmtpCommand} from "../shared/SmtpCommand";
 
 export enum SmtpCommanderFlag {
   IS_ESMTP = 1 << 0, // The server is an ESMTP server.
@@ -32,6 +33,7 @@ export enum SmtpCommanderFlag {
 
 export declare interface SmtpClientCommander {
   on(event: "destroy", listener: () => void): this;
+
   on(event: "ready", listener: () => void): this;
 }
 
@@ -86,7 +88,7 @@ export class SmtpClientCommander extends EventEmitter {
     this._total_enqueued = this._total_executed = 0;
 
     // Registers the events.
-    this._smtp_client.once('close', () => this._handle_close())
+    this._smtp_client.once("close", () => this._handle_close());
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._handle_greeting(response)
     );
@@ -105,7 +107,10 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Checks if the queue is empty, if so we can just enter transmission mode immediately
     //  since there is nothing going on now.
-    if (this._assignment_queue.size === 1 && this._flags.are_set(SmtpCommanderFlag.READY)) {
+    if (
+      this._assignment_queue.size === 1 &&
+      this._flags.are_set(SmtpCommanderFlag.READY)
+    ) {
       // Cancels the NOOP timer.
       this._timer_ref?.unref();
       this._timer_ref = undefined;
@@ -165,29 +170,50 @@ export class SmtpClientCommander extends EventEmitter {
   // General Handlers.
   ////////////////////////////////////////////////
 
+  protected _give_up_transaction(
+    error:
+      | SmtpClientAssignmentError
+      | SmtpClientAssignmentError_CommandError
+      | SmtpClientAssignmentError_SocketError
+      | SmtpClientAssignmentError_RecipientUnreachable
+      | SmtpClientAssignmentError_MailExchange
+  ): void {
+    // Pushes the error.
+    this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
+
+    // Ends the current transaction.
+    this._handle_done(false);
+  }
+
   protected _handle_close(): void {
     // If executing, finish the assignment with an error.
     if (this._flags.are_set(SmtpCommanderFlag.EXECUTING)) {
-      this._logger?.error('Transaction closed prematurely.');
+      this._logger?.error("Transaction closed prematurely.");
 
       // Adds the error.
       const error: SmtpClientAssignmentError_SocketError = {
         type: SmtpClientAssignmentErrorType.SocketError,
-        error: new Error('Socket closed during transaction.')
+        error: new Error("Socket closed during transaction."),
       };
-      this._active_assignment_errors!.push(error as SmtpClientAssignmentError)
+      this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
 
       // Finishes the assignment.
       this._transaction_finish();
     }
 
     // Emits the destroy event.
-    this.emit('destroy');
+    this.emit("destroy");
   }
 
   protected _handle_noop(response: SmtpResponse): void {
     // Logs that we've received the ACK.
     this._logger?.trace(`Received NOOP response, setting timeout again ..`);
+
+    // Checks if the status is okay, if not quit.
+    if (response.status !== 250) {
+      this._smtp_client.cmd_quit();
+      return;
+    }
 
     // Sets the NOOP timeout.
     this._set_noop_timeout();
@@ -215,7 +241,7 @@ export class SmtpClientCommander extends EventEmitter {
     this._assignment_queue.peek().callback({
       transfer_start: this._active_assignment_start!,
       transfer_end: new Date(),
-      errors: this._active_assignment_errors!
+      errors: this._active_assignment_errors!,
     });
 
     // Sets the executing bit to false.
@@ -306,11 +332,26 @@ export class SmtpClientCommander extends EventEmitter {
     this._smtp_client.cmd_rset();
   }
 
+  /**
+   * Gets called on an RSET response.
+   * @param assignment the assignment.
+   * @param response the response.
+   * @protected
+   */
   protected _transaction_handle_rset_response(
     assignment: SmtpClientAssignment,
     response: SmtpResponse
   ) {
     this._logger?.trace(`Received RSET Response, beginning transaction ...`);
+
+    // Makes sure that the status is valid.
+    if (response.status !== 250) {
+      this._give_up_transaction({
+        type: SmtpClientAssignmentErrorType.CommandError,
+        response,
+      });
+      return;
+    }
 
     // Sends the from.
     this._transaction_send_from(assignment);
@@ -325,6 +366,12 @@ export class SmtpClientCommander extends EventEmitter {
     this._smtp_client.cmd_mail_from(assignment.from);
   }
 
+  /**
+   * Handles the from response.
+   * @param assignment the assignment.
+   * @param response the response.
+   * @protected
+   */
   protected _transaction_handle_from_response(
     assignment: SmtpClientAssignment,
     response: SmtpResponse
@@ -332,6 +379,15 @@ export class SmtpClientCommander extends EventEmitter {
     this._logger?.trace(
       `Received mail from response, starting with RCPT to ...`
     );
+
+    // Makes sure that the status is valid.
+    if (response.status !== 250) {
+      this._give_up_transaction({
+        type: SmtpClientAssignmentErrorType.CommandError,
+        response,
+      });
+      return;
+    }
 
     // Bootstraps the RCPT to sequence, by default the index will be zero, but this will increase
     //  each RCPT TO we send, until we've reached the number of recipients and proceed to DATA/ BDAT.
@@ -353,7 +409,7 @@ export class SmtpClientCommander extends EventEmitter {
     );
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_rcpt_to(assignment, index)
+      this._transaction_handle_rcpt_to(assignment, response, index)
     );
     this._smtp_client.cmd_rcpt_to(assignment.to[index]);
   }
@@ -361,16 +417,30 @@ export class SmtpClientCommander extends EventEmitter {
   /**
    * Handles the RCPT to command.
    * @param assignment the assignment.
+   * @param response the response.
    * @param index the to index.
    * @protected
    */
   protected _transaction_handle_rcpt_to(
     assignment: SmtpClientAssignment,
+    response: SmtpResponse,
     index: number
   ): void {
     this._logger?.trace(
       `Received recipient response (${index}): ${assignment.to[index]}`
     );
+
+    // Makes sure that the status is valid, if not push a recipient error,
+    //  and if all recipients were unreachable, we will give up.
+    if (response.status !== 250) {
+      const error: SmtpClientAssignmentError_RecipientUnreachable = {
+        type: SmtpClientAssignmentErrorType.RecipientUnreachable,
+        response,
+        recipient: assignment.to[index],
+      };
+      this._active_assignment_errors!.push(error);
+      return;
+    }
 
     // Checks if there is another recipient to send, if so trigger that.
     if (index + 1 < assignment.to.length) {
@@ -446,13 +516,13 @@ export class SmtpClientCommander extends EventEmitter {
     response: SmtpResponse
   ): void {
     this._logger?.trace("Received data complete response.");
-    
+
     // Makes sure that the response contains the valid status code, if not push an error
     //  to the errors, and just continue, since it's the last step anyways.
     if (response.status !== 250) {
       const error: SmtpClientAssignmentError_CommandError = {
         type: SmtpClientAssignmentErrorType.CommandError,
-        response
+        response,
       };
       this._active_assignment_errors!.push(error);
     }
