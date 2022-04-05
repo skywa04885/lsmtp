@@ -73,8 +73,13 @@ export class SmtpClientPool extends EventEmitter {
 
     // Sets the events for the commander.
     commander.once("destroy", (): void => {
-      console.log('destroyed!!!!!!!');
+      // Removes the commander.
       this._nodes.remove(commander);
+
+      // Enqueues the assignment to another commander.
+      while (!commander.assignment_queue.empty) {
+        this.assign(commander.assignment_queue.dequeue());
+      }
     });
 
     // Connects the client.

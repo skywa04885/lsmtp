@@ -138,8 +138,9 @@ export class LinkedList<T> {
     /**
      * Removes an matching item from the linked list.
      * @param needle the needle to search for.
+     * @return the removed value.
      */
-    public remove(needle: T): void {
+    public remove(needle: T): T {
         if (this.empty) {
             throw new Error('Linked list is empty.');
         }
@@ -168,6 +169,12 @@ export class LinkedList<T> {
             --this._size;
             break;
         }
+
+        if (!node) {
+            throw new Error('Needle not present in linked list.');
+        }
+
+        return node.data;
     }
 
     /**

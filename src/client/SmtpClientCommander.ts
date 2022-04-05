@@ -3,24 +3,31 @@ import { Flags } from "../helpers/Flags";
 import { Logger } from "../helpers/Logger";
 import { SmtpCapability } from "../shared/SmtpCapability";
 import { SmtpResponse } from "../shared/SmtpResponse";
-import { SmtpClient, SmtpClientOptions } from "./SmtpClient";
+import { SmtpClient } from "./SmtpClient";
 import {
-  SmtpCommanderServerFeatures,
-  SmtpCommanderServerOpts,
   smtp_client_server_opts_from_capabilities,
   smtp_commander_server_opts_flags_string,
+  SmtpCommanderServerFeatures,
+  SmtpCommanderServerOpts,
 } from "./SmtpClientServerConfig";
-import { SmtpClientAssignment } from "./SmtpCommanderAssignment";
+import {
+  SmtpClientAssignment,
+  SmtpClientAssignmentError,
+  SmtpClientAssignmentError_CommandError,
+  SmtpClientAssignmentError_SocketError,
+  SmtpClientAssignmentErrorType,
+} from "./SmtpCommanderAssignment";
 import { Queue } from "../helpers/Queue";
 import { DotEscapeEncodeStream } from "llibencoding";
-import {Readable} from "stream";
+import { Readable } from "stream";
+import {SmtpCommand} from "../shared/SmtpCommand";
 
 export enum SmtpCommanderFlag {
   IS_ESMTP = 1 << 0, // The server is an ESMTP server.
   IS_SMTP = 1 << 1, // The server is an SMTP server.
-  SUPPORTS_STARTTLS = 1 << 2, // If the server supports STARTTLS
   TRANSACTION_HAPPENED = 1 << 3,
-  READY = (1 << 4)
+  READY = 1 << 4,
+  EXECUTING = 1 << 5,
 }
 
 export declare interface SmtpClientCommander {
@@ -49,6 +56,9 @@ export class SmtpClientCommander extends EventEmitter {
   protected _assignment_queue: Queue<SmtpClientAssignment>;
   protected _total_enqueued: number;
   protected _total_executed: number;
+
+  protected _active_assignment_start?: Date;
+  protected _active_assignment_errors?: SmtpClientAssignmentError[];
 
   public constructor(
     smtp_client: SmtpClient,
@@ -115,6 +125,13 @@ export class SmtpClientCommander extends EventEmitter {
   ////////////////////////////////////////////////
 
   /**
+   * Gets the assignment queue.
+   */
+  public get assignment_queue(): Queue<SmtpClientAssignment> {
+    return this._assignment_queue;
+  }
+
+  /**
    * Checks if the SMTP-UTF8 feature is enabled on the server.
    */
   public get supports_smtp_utf8(): boolean {
@@ -149,6 +166,22 @@ export class SmtpClientCommander extends EventEmitter {
   ////////////////////////////////////////////////
 
   protected _handle_close(): void {
+    // If executing, finish the assignment with an error.
+    if (this._flags.are_set(SmtpCommanderFlag.EXECUTING)) {
+      this._logger?.error('Transaction closed prematurely.');
+
+      // Adds the error.
+      const error: SmtpClientAssignmentError_SocketError = {
+        type: SmtpClientAssignmentErrorType.SocketError,
+        error: new Error('Socket closed during transaction.')
+      };
+      this._active_assignment_errors!.push(error as SmtpClientAssignmentError)
+
+      // Finishes the assignment.
+      this._transaction_finish();
+    }
+
+    // Emits the destroy event.
     this.emit('destroy');
   }
 
@@ -174,6 +207,26 @@ export class SmtpClientCommander extends EventEmitter {
   }
 
   /**
+   * Finishes the ongoing assignment and calls the callback.
+   * @protected
+   */
+  protected _transaction_finish(): void {
+    // Calls the assignment callback.
+    this._assignment_queue.peek().callback({
+      transfer_start: this._active_assignment_start!,
+      transfer_end: new Date(),
+      errors: this._active_assignment_errors!
+    });
+
+    // Sets the executing bit to false.
+    this._flags.clear(SmtpCommanderFlag.EXECUTING);
+
+    // Dequeues the assignment.
+    this._logger?.trace(`Transmission complete, dequeue assignment ...`);
+    this._assignment_queue.dequeue();
+  }
+
+  /**
    * Gets called when either the client is ready, or an transmission is done.
    * @param initial if this was called from the initial phase.
    * @protected
@@ -188,16 +241,15 @@ export class SmtpClientCommander extends EventEmitter {
       // Sets the ready flag.
       this._flags.set(SmtpCommanderFlag.READY);
     } else {
+      // Finishes the assignment.
+      this._transaction_finish();
+
       // If we've executed the max number of assignments, close.
       if (++this._total_executed >= this._max_assignments) {
         this._logger?.trace(`Executed max number of assignments, closing ...`);
         this._smtp_client.smtp_socket.close();
         return;
       }
-
-      // Dequeues the assignment.
-      this._logger?.trace(`Transmission complete, dequeue assignment ...`);
-      this._assignment_queue.dequeue();
     }
 
     // Checks if there are more messages in the queue, if not enter IDLE mode, else
@@ -227,6 +279,13 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_begin(assignment: SmtpClientAssignment): void {
+    // Sets the executing bit to true.
+    this._flags.set(SmtpCommanderFlag.EXECUTING);
+
+    // Sets the start time, and the initial error array.
+    this._active_assignment_start = new Date();
+    this._active_assignment_errors = [];
+
     // Checks if this is the first transaction, if so begin immediately, and clear the flag.
     if (this._flags.are_clear(SmtpCommanderFlag.TRANSACTION_HAPPENED)) {
       this._flags.set(SmtpCommanderFlag.TRANSACTION_HAPPENED);
@@ -279,6 +338,12 @@ export class SmtpClientCommander extends EventEmitter {
     this._transaction_send_rcpt_to(assignment);
   }
 
+  /**
+   * Sends the RCPT to command.
+   * @param assignment the assignment.
+   * @param index the index of the current recipient.
+   * @protected
+   */
   protected _transaction_send_rcpt_to(
     assignment: SmtpClientAssignment,
     index: number = 0
@@ -381,6 +446,16 @@ export class SmtpClientCommander extends EventEmitter {
     response: SmtpResponse
   ): void {
     this._logger?.trace("Received data complete response.");
+    
+    // Makes sure that the response contains the valid status code, if not push an error
+    //  to the errors, and just continue, since it's the last step anyways.
+    if (response.status !== 250) {
+      const error: SmtpClientAssignmentError_CommandError = {
+        type: SmtpClientAssignmentErrorType.CommandError,
+        response
+      };
+      this._active_assignment_errors!.push(error);
+    }
 
     // Calls the handle done, and maybe starts the transmission of another message.
     this._handle_done(false);
