@@ -1,5 +1,5 @@
 export enum SmtpSessionState {
-    Data = 'DATA',
-    Bdat = 'BDAT',
-    Command = 'COMMAND',
+  Data = "DATA",
+  Bdat = "BDAT",
+  Command = "COMMAND",
 }

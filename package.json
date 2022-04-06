@@ -1,11 +1,29 @@
 {
   "devDependencies": {
     "@types/node": "^17.0.22",
-    "prettier": "^2.6.1"
+    "prettier": "^2.6.1",
+    "typescript": "^4.6.3"
   },
   "dependencies": {
     "llibencoding": "^1.0.6",
     "llibmime": "^1.0.1",
     "lxoauth2": "^1.0.4"
-  }
+  },
+  "name": "lsmtp",
+  "types": "dist/index.d.ts",
+  "version": "1.0.0",
+  "description": "Simple SMTP client / server",
+  "main": "dist/index.js",
+  "scripts": {
+    "prepublishOnly": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skywa04885/lsmtp"
+  },
+  "files": [
+    "dist/*"
+  ],
+  "author": "",
+  "license": "MIT"
 }

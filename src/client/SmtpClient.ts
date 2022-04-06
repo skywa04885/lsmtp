@@ -6,7 +6,10 @@ import { SmtpClientDNS } from "./SmtpClientDNS";
 import { SmtpClientStream } from "./SmtpClientStream";
 import { SmtpStream } from "../server/SmtpServerStream";
 import { Logger } from "../helpers/Logger";
-import { SmtpClientAssignmentError, SmtpClientAssignmentError_MailExchange } from "./SmtpCommanderAssignment";
+import {
+  SmtpClientAssignmentError,
+  SmtpClientAssignmentError_MailExchange,
+} from "./SmtpCommanderAssignment";
 
 export interface SmtpClientOptions {
   debug?: boolean;
@@ -21,11 +24,11 @@ export declare interface SmtpClient {
 
   on(event: "response", listener: (response: SmtpResponse) => void): this;
 
-  once(event: 'close', listener: () => void): this;
+  once(event: "close", listener: () => void): this;
 
-  on(event: 'error', listener: (error: Error) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
 
-  once(event: 'error', listener: (error: Error) => void): this;
+  once(event: "error", listener: (error: Error) => void): this;
 }
 
 export class SmtpClient extends EventEmitter {
@@ -53,7 +56,7 @@ export class SmtpClient extends EventEmitter {
     // Registers the standard event listeners (for the socket).
     this._smtp_socket.on("connect", () => this._handle_connect());
     this._smtp_socket.on("upgrade", () => this._handle_upgrade());
-    this._smtp_socket.on('error', (error: Error) => this._handle_error(error));
+    this._smtp_socket.on("error", (error: Error) => this._handle_error(error));
     this._smtp_socket.on("data", (chunk: Buffer) =>
       this._smtp_stream.write(chunk)
     );
@@ -83,7 +86,7 @@ export class SmtpClient extends EventEmitter {
     try {
       return await SmtpClientDNS.mx(hostname);
     } catch (e) {
-      throw new SmtpClientAssignmentError('Could not resolve MX records.');
+      throw new SmtpClientAssignmentError("Could not resolve MX records.");
     }
   }
 
@@ -97,11 +100,7 @@ export class SmtpClient extends EventEmitter {
    * @param port the port.
    * @param secure if we're using a secure socket.
    */
-  public connect(
-    exchange: string,
-    port: number,
-    secure: boolean,
-  ): void {
+  public connect(exchange: string, port: number, secure: boolean): void {
     this._smtp_socket.connect(secure, exchange, port);
   }
 
@@ -233,6 +232,6 @@ export class SmtpClient extends EventEmitter {
    * @protected
    */
   protected _handle_error(error: Error) {
-    this.emit('error', error);
+    this.emit("error", error);
   }
 }

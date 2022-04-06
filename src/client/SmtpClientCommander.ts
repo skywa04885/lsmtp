@@ -160,9 +160,7 @@ export class SmtpClientCommander extends EventEmitter {
   // General Handlers.
   ////////////////////////////////////////////////
 
-  protected _give_up_transaction(
-    error: SmtpClientAssignmentError
-  ): void {
+  protected _give_up_transaction(error: SmtpClientAssignmentError): void {
     // Pushes the error.
     this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
 
@@ -177,7 +175,11 @@ export class SmtpClientCommander extends EventEmitter {
 
       // Pushes the error onto the errors array, and finishes
       //  the transaction.
-      this._active_assignment_errors!.push(new SmtpClientAssignmentError_SocketError('Socket closed during transaction.'));
+      this._active_assignment_errors!.push(
+        new SmtpClientAssignmentError_SocketError(
+          "Socket closed during transaction."
+        )
+      );
       this._transaction_finish();
     }
 
@@ -335,7 +337,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Makes sure that the status is valid.
     if (response.status !== 250) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Status code did not match desired code: 250'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Status code did not match desired code: 250"
+        )
+      );
       return;
     }
 
@@ -355,7 +362,7 @@ export class SmtpClientCommander extends EventEmitter {
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._transaction_handle_from_response(assignment, response)
     );
-    
+
     // Sends the mail from command.
     this._smtp_client.cmd_mail_from(assignment.from);
   }
@@ -376,7 +383,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Makes sure that the status is valid.
     if (response.status !== 250) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Status code did not match desired code: 250'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Status code did not match desired code: 250"
+        )
+      );
       return;
     }
 
@@ -429,9 +441,12 @@ export class SmtpClientCommander extends EventEmitter {
       ++this._active_assignment_failed_recipients!;
 
       // Pushes the error.
-      const error: SmtpClientAssignmentError = new SmtpClientAssignmentError_RecipientError(
-        assignment.to[index], response, 'Response code did not match desired code: 250'
-      )
+      const error: SmtpClientAssignmentError =
+        new SmtpClientAssignmentError_RecipientError(
+          assignment.to[index],
+          response,
+          "Response code did not match desired code: 250"
+        );
 
       // Checks if any recipients succeeded, if not then just give up, else just
       //  push the error.
@@ -487,7 +502,12 @@ export class SmtpClientCommander extends EventEmitter {
     // Validates the response.
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 354) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 354'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 354"
+        )
+      );
       return;
     }
 
@@ -527,7 +547,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 250"
+        )
+      );
       return;
     }
 
@@ -563,7 +588,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 200) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 220'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 220"
+        )
+      );
       return;
     }
 
@@ -582,7 +612,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 250"
+        )
+      );
       return;
     }
 
@@ -635,7 +670,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 250"
+        )
+      );
       return;
     }
 
@@ -656,7 +696,12 @@ export class SmtpClientCommander extends EventEmitter {
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 220) {
-      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 220'));
+      this._give_up_transaction(
+        new SmtpClientAssignmentError_ResponseError(
+          response,
+          "Response code did not match desired code: 220"
+        )
+      );
       return;
     }
 

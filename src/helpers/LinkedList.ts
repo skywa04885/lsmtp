@@ -78,7 +78,7 @@ export class LinkedList<T> {
      */
     public get head(): T {
         if (this.empty) {
-            throw new Error('Linked list is empty.');
+          throw new Error("Linked list is empty.");
         }
 
         // @ts-ignore
