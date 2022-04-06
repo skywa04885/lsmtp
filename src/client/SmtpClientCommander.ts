@@ -129,6 +129,13 @@ export class SmtpClientCommander extends EventEmitter {
   ////////////////////////////////////////////////
 
   /**
+   * Checks if we've reached the max number of assignments.
+   */
+  public get max_assignments_reached(): boolean {
+    return this._total_enqueued >= this._max_assignments;
+  }
+
+  /**
    * Gets the assignment queue.
    */
   public get assignment_queue(): Queue<SmtpClientAssignment> {
@@ -477,6 +484,13 @@ export class SmtpClientCommander extends EventEmitter {
       "Received data command, started streaming out data ..."
     );
 
+    // Validates the response.
+    // If the status code is invalid, just give up the transaction.
+    if (response.status !== 354) {
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 354'));
+      return;
+    }
+
     // Sets the response handler for after the data command.
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._transaction_handle_data_complete_response(assignment, response)
@@ -535,7 +549,7 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Writes the HELO command, to receive the new capabilities.
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._handle_ehlo(response)
+      this._handle_ehlo_response(response)
     );
     this._smtp_client.cmd_ehlo(this._server_domain);
   }
@@ -547,6 +561,12 @@ export class SmtpClientCommander extends EventEmitter {
     // Logs that we've received the STARTTLS response.
     this._logger?.trace("STARTTLS Response received, upgrading connection ...");
 
+    // If the status code is invalid, just give up the transaction.
+    if (response.status !== 200) {
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 220'));
+      return;
+    }
+
     // Upgrades the connection.
     this._smtp_client.once("upgrade", () => this._handle_starttls_upgrade());
     this._smtp_client.upgrade();
@@ -556,9 +576,15 @@ export class SmtpClientCommander extends EventEmitter {
    * Gets called when the EHLO response has been returned.
    * @param response the response.
    */
-  protected _handle_ehlo(response: SmtpResponse) {
+  protected _handle_ehlo_response(response: SmtpResponse) {
     // Logs that we've received the EHLO, if debug enabled.
     this._logger?.trace("Received EHLO, checking capabilities ...");
+
+    // If the status code is invalid, just give up the transaction.
+    if (response.status !== 250) {
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      return;
+    }
 
     // Decodes the capabilities.
     const capabilities: SmtpCapability[] = SmtpCapability.decode_many(
@@ -601,11 +627,17 @@ export class SmtpClientCommander extends EventEmitter {
    * Gets called when the HELO response has been returned.
    * @param response the response.
    */
-  protected _handle_helo(response: SmtpResponse) {
+  protected _handle_helo_response(response: SmtpResponse) {
     // Logs that we've received the HELO, if debug enabled.
     this._logger?.trace(
       "Received HELO (LMFAO this server sucks so fucking hard, just support ESMTP ;P)."
     );
+
+    // If the status code is invalid, just give up the transaction.
+    if (response.status !== 250) {
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      return;
+    }
 
     // Calls the handle done, since we either want to enter IDLE state,
     //  or start transmission.
@@ -621,6 +653,12 @@ export class SmtpClientCommander extends EventEmitter {
     this._logger?.trace(
       `Received greeting with message: '${response.message_string}'`
     );
+
+    // If the status code is invalid, just give up the transaction.
+    if (response.status !== 220) {
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 220'));
+      return;
+    }
 
     // Gets the greeting message as a string.
     const message: string = response.message_string.toLocaleLowerCase();
@@ -638,14 +676,14 @@ export class SmtpClientCommander extends EventEmitter {
       this._logger?.trace("Server supports ESMTP, sending EHLO ...");
 
       this._smtp_client.once("response", (response: SmtpResponse) =>
-        this._handle_ehlo(response)
+        this._handle_ehlo_response(response)
       );
       this._smtp_client.cmd_ehlo(this._server_domain);
     } else if (this._flags.are_set(SmtpCommanderFlag.IS_SMTP)) {
       this._logger?.trace("Server supports SMTP only, sending HELO ...");
 
       this._smtp_client.once("response", (response: SmtpResponse) =>
-        this._handle_helo(response)
+        this._handle_helo_response(response)
       );
       this._smtp_client.cmd_helo(this._server_domain);
     }

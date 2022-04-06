@@ -1,17 +1,14 @@
 import { EventEmitter } from "events";
 import { LinkedList } from "../helpers/LinkedList";
 import { Logger } from "../helpers/Logger";
-import { Queue } from "../helpers/Queue";
-import {
-  SmtpClientAssignment,
-  SmtpClientAssignmentError,
-} from "./SmtpCommanderAssignment";
+import { SmtpClientAssignment } from "./SmtpCommanderAssignment";
 import {
   SmtpClientCommander,
   SmtpClientCommanderOptions,
 } from "./SmtpClientCommander";
 import { SmtpClient, SmtpClientOptions } from "./SmtpClient";
-import { SmtpClientError } from "./SmtpClientError";
+import { SmtpMailExchanges } from "../SmtpMailExchanges";
+import { MxRecord } from "dns";
 
 export interface SmtpClientPoolOptions {
   client_options?: SmtpClientOptions;
@@ -21,11 +18,12 @@ export interface SmtpClientPoolOptions {
 
 export declare interface SmtpClientPool {
   on(event: "destroy", listener: () => void): this;
+
   once(event: "destroy", listener: () => void): this;
 }
 
 export class SmtpClientPool extends EventEmitter {
-  protected _hostname: string;
+  protected _exchanges: SmtpMailExchanges;
   protected _port: number;
   protected _secure: boolean;
 
@@ -34,10 +32,18 @@ export class SmtpClientPool extends EventEmitter {
   protected _debug: boolean;
   protected _logger?: Logger;
 
-  protected _nodes: LinkedList<SmtpClientCommander>;
+  protected _nodes: LinkedList<SmtpClientCommander> =
+    new LinkedList<SmtpClientCommander>();
 
+  /**
+   * Constructs a new SmtpClientPool with the given connect options.
+   * @param exchanges the mail exchanges.
+   * @param port the port.
+   * @param secure the secure option.
+   * @param options the options.
+   */
   public constructor(
-    hostname: string,
+    exchanges: SmtpMailExchanges,
     port: number,
     secure: boolean = false,
     options: SmtpClientPoolOptions = {}
@@ -45,7 +51,7 @@ export class SmtpClientPool extends EventEmitter {
     super();
 
     // Sets the hostname and port.
-    this._hostname = hostname;
+    this._exchanges = exchanges;
     this._port = port;
     this._secure = secure;
 
@@ -56,84 +62,83 @@ export class SmtpClientPool extends EventEmitter {
 
     // Creates the logger.
     if (this._debug) {
-      this._logger = new Logger(`SmtpClientPool(${this._hostname})`);
+      this._logger = new Logger(`SmtpClientPool(${this._exchanges.hostname})`);
     }
 
     // Logs the base.
-    this._logger?.trace(`Client pool created for ${this._secure ? 'TLS' : 'PLAIN'} ${this._hostname}:${this._port}`);
-
-    // Sets the default values for the instance variables.
-    this._nodes = new LinkedList<SmtpClientCommander>();
+    this._logger?.trace(
+      `Client pool created for ${this._secure ? "TLS" : "PLAIN"} ${
+        this._exchanges.hostname
+      }:${this._port}`
+    );
   }
 
-  protected _assign_to_current_head(assignment: SmtpClientAssignment) {
-    const head: SmtpClientCommander = this._nodes.head;
-    head.assign(assignment);
+  /**
+   * Gets called when a commander emits the destroy event.
+   * @param commander the commander.
+   * @protected
+   */
+  protected _on_commander_destroy(commander: SmtpClientCommander): void {
+    // Removes the commander from the list, to prevent confusion.
+    this._nodes.remove(commander);
+
+    // Checks if there are assignments left in the queue, if not return.
+    if (commander.assignment_queue.empty) {
+      return;
+    }
+
+    // Enqueue all the remaining assignments to different commanders.
+    this._logger?.trace(
+      `Transferring unhandled assignments to new clients ...`
+    );
+    while (!commander.assignment_queue.empty) {
+      this.assign(commander.assignment_queue.dequeue());
+    }
   }
 
-  protected async _create_new_head_and_assign(assignment: SmtpClientAssignment) {
-    // Creates the client and the commander.
+  /**
+   * Assigns a new assignment to the pool.
+   * @param assignment the assignment.
+   */
+  public assign(assignment: SmtpClientAssignment): void {
+    // Logs the message indicating where the assignment is going towards.
+    this._logger?.trace(
+      `We've received a new assignment to: (${assignment.to.join(", ")})`
+    );
+
+    // Checks if there is space left in the current head, if so just enqueue
+    //  it to the current head.
+    if (!this._nodes.empty && !this._nodes.head.max_assignments_reached) {
+      const head_commander: SmtpClientCommander = this._nodes.head;
+      return head_commander.assign(assignment);
+    }
+
+    // Since there is no space or no current commander available, we create
+    //  a new one, first we'll get the exchange.
+    const exchange: MxRecord = this._exchanges.exchange;
+    this._logger?.trace(
+      `Creating new commander for exchange '${exchange.exchange}' with priority ${exchange.priority}`
+    );
+
+    // Creates the client and gives it the options the callee has specified.
     const client: SmtpClient = new SmtpClient(this._client_options);
+
+    // Creates the commander for the client, and give it the callee specified
+    //  options, since we don't have any ourselves.
     const commander: SmtpClientCommander = new SmtpClientCommander(
       client,
       this._commander_options
     );
 
-    // Assigns the assignment to the commander, and pushes the commander to the nodes.
+    // Pushes the assignment to the commander, and inserts the commander
+    //  to the internal commander list.
     commander.assign(assignment);
     this._nodes.push_head(commander);
 
-    // Sets the events for the commander.
-    commander.once("destroy", (): void => {
-      // Removes the commander.
-      this._nodes.remove(commander);
-
-      // Checks if there are assignments left.
-      if (commander.assignment_queue.empty) {
-        return;
-      }
-
-      // Enqueues the assignment to another commander.
-      this._logger?.trace(`Transferring unhandled assignments to new clients ...`);
-      while (!commander.assignment_queue.empty) {
-        this.assign(commander.assignment_queue.dequeue());
-      }
-    });
-
-    // Connects the client, if this fails for some reason, we immediately
-    //  call the error callback.
-    try {
-      await client.connect(this._hostname, this._port, this._secure, true);
-    } catch (e) {
-      // Makes sure the error is an client assignment error, if not
-      //  just throw it again (to crash).
-      if (!(e instanceof SmtpClientAssignmentError)) {
-        throw e;
-      }
-
-      // Removes the commander from the nodes.
-      this._nodes.remove(commander);
-
-      // Calls the assignment callback.
-      assignment.callback({
-        errors: [ e ]
-      });
-    }
-  }
-
-  /**
-   * Assigns an assignment to the pool.
-   * @param assignment the assignment.
-   */
-  public async assign(assignment: SmtpClientAssignment): Promise<void> {
-    if (
-      this._nodes.size > 0 &&
-      this._nodes.head.total_enqueued < this._nodes.head.max_assignments
-    ) {
-      this._assign_to_current_head(assignment);
-      return;
-    }
-
-    await this._create_new_head_and_assign(assignment);
+    // Creates the event listeners, and triggers the connection.
+    commander.once("destroy", (): void =>
+      this._on_commander_destroy(commander)
+    );
+    client.connect(exchange.exchange, this._port, this._secure);
   }
 }

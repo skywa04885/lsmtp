@@ -93,47 +93,15 @@ export class SmtpClient extends EventEmitter {
 
   /**
    * Connects the SmtpClient to the given server.
-   * @param hostname the hostname.
+   * @param exchange the exchange.
    * @param port the port.
    * @param secure if we're using a secure socket.
-   * @param use_mx if we should solve for mx.
    */
-  public async connect(
-    hostname: string,
+  public connect(
+    exchange: string,
     port: number,
     secure: boolean,
-    use_mx: boolean
-  ): Promise<void> {
-    let exchange: string;
-
-    // Checks if we're using MX, if so resolve the MX records, else just set
-    //  the hostname as the exchange.
-    if (use_mx) {
-      // Prints that we're solving for MX records.
-      if (this._debug) {
-        this._logger!.trace(`Resolving MX records for hostname: ${hostname}`);
-      }
-
-      // Gets the exchanges.
-      let exchanges: string[] = await SmtpClient._get_mx_exchanges(hostname);
-
-      // Emits the error.
-      if (exchanges.length === 0) {
-        throw new Error("Could not find any exchange from MX records.");
-      }
-
-      // Uses the first exchange (highest rank).
-      exchange = exchanges[0];
-    } else {
-      exchange = hostname;
-    }
-
-    // Prints which exchange we're using.
-    if (this._debug) {
-      this._logger!.trace(`Using mail exchange ${exchange}:${port}`);
-    }
-
-    // Connects the client.
+  ): void {
     this._smtp_socket.connect(secure, exchange, port);
   }
 

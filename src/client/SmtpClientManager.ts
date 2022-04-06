@@ -1,12 +1,19 @@
-import {SmtpClientAssignment, SmtpClientAssignmentResult} from "./SmtpCommanderAssignment";
+import {
+  SmtpClientAssignment,
+  SmtpClientAssignmentResult,
+} from "./SmtpCommanderAssignment";
 import { SmtpClientPool, SmtpClientPoolOptions } from "./SmtpClientPool";
 import { Logger } from "../helpers/Logger";
-import {LinkedList} from "../helpers/LinkedList";
+import { LinkedList } from "../helpers/LinkedList";
+import { SmtpMailExchanges } from "../SmtpMailExchanges";
 
-export type SmtpClientManagerAssignmentCallback = (result: SmtpClientAssignmentResult[]) => void;
+export type SmtpClientManagerAssignmentCallback = (
+  result: SmtpClientAssignmentResult[]
+) => void;
 
 export class SmtpClientManagerAssignment {
-  protected _assignments_in_progress: LinkedList<SmtpClientAssignment> = new LinkedList<SmtpClientAssignment>();
+  protected _assignments_in_progress: LinkedList<SmtpClientAssignment> =
+    new LinkedList<SmtpClientAssignment>();
   protected results: SmtpClientAssignmentResult[] = [];
 
   public constructor(
@@ -27,7 +34,8 @@ export class SmtpClientManagerAssignment {
         to: addresses,
         from: this.from,
         data: this.data,
-        callback: (result: SmtpClientAssignmentResult) => this._on_completion(assignment, result),
+        callback: (result: SmtpClientAssignmentResult) =>
+          this._on_completion(assignment, result),
       };
 
       // Pushes the assignment to the result.
@@ -76,7 +84,10 @@ export class SmtpClientManagerAssignment {
    * @param assignment the assignment.
    * @param result the result of the commander.
    */
-  protected _on_completion(assignment: SmtpClientAssignment, result: SmtpClientAssignmentResult) {
+  protected _on_completion(
+    assignment: SmtpClientAssignment,
+    result: SmtpClientAssignmentResult
+  ) {
     // Removes the assignment from the in progress assignments.
     this._assignments_in_progress.remove(assignment);
 
@@ -110,6 +121,10 @@ export class SmtpClientManager {
 
   protected _logger?: Logger;
 
+  /**
+   * Creates a new SmtpClientManager instance.
+   * @param options the options.
+   */
   public constructor(options: SmtpClientManagerOptions = {}) {
     this._pool_options = options.pool_options;
     this._port = options.port ?? 25;
@@ -122,57 +137,58 @@ export class SmtpClientManager {
   }
 
   /**
-   * Gets a pool from the map.
-   * @param hostname the hostname to search for.
-   * @returns the pool.
+   * Gets a pool, if not there create it.
+   * @param domain the domain.
+   * @protected
    */
-  protected get_pool(hostname: string): SmtpClientPool | null {
-    return this._map[hostname] ?? null;
+  protected async _get_or_create_pool(domain: string): Promise<SmtpClientPool> {
+    // If the pool exists, just return it.
+    if (this._map[domain]) {
+      return this._map[domain];
+    }
+
+    // Resolves the mail exchanges for the hostname.
+    const mail_exchanges: SmtpMailExchanges = await SmtpMailExchanges.resolve(
+      domain
+    );
+
+    // Creates the new pool and puts it in the map.
+    const pool: SmtpClientPool = new SmtpClientPool(
+      mail_exchanges,
+      this._port,
+      this._secure,
+      this._pool_options
+    );
+    this._map[domain] = pool;
+
+    return pool;
   }
 
   /**
-   * Sets a pool in the map.
-   * @param hostname the hostname.
-   * @param pool the pool.
+   * Assigns the given assignment to the given domain.
+   * @param domain the domain.
+   * @param assignment the assignment.
+   * @protected
    */
-  protected set_pool(hostname: string, pool: SmtpClientPool): void {
-    this._map[hostname] = pool;
+  protected async _assign_to_pool(
+    domain: string,
+    assignment: SmtpClientAssignment
+  ): Promise<void> {
+    const pool: SmtpClientPool = await this._get_or_create_pool(domain);
+    pool.assign(assignment);
   }
 
+  /**
+   * Assigns the given manager assignment to the pools.
+   * @param man_assignment the assignments.
+   */
   public async assign(
     man_assignment: SmtpClientManagerAssignment
   ): Promise<void> {
-    this._logger?.trace(`Received new assignment ...`);
-
-    // Gets all the assignments from the manager assignment.
-    const assignments: SmtpClientAssignment[] = man_assignment.prepare_client_assignments();
-
-    // Enqueues all the assignments.
+    const assignments: SmtpClientAssignment[] =
+      man_assignment.prepare_client_assignments();
     for (const assignment of assignments) {
-      this._logger?.trace(
-        `Enqueueing to pool: ${assignment.domain}, assignment: ${assignment.to.join(", ")}`
-      );
-
-      // Assigns the assignment to a pool.
-      let pool: SmtpClientPool | null = this.get_pool(assignment.domain);
-      if (!pool) {
-        pool = new SmtpClientPool(
-          assignment.domain,
-          this._port,
-          this._secure,
-          this._pool_options
-        );
-        this.set_pool(assignment.domain, pool);
-      }
-
-      await pool.assign(assignment);
+      await this._assign_to_pool(assignment.domain, assignment);
     }
   }
-
-  protected async _assign(
-    hostname: string,
-    port: number,
-    secure: boolean,
-    assignment: SmtpClientAssignment
-  ): Promise<void> {}
 }

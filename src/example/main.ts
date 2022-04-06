@@ -69,7 +69,7 @@ let a = mime_compose(comp, false);
   });
 
   const smtp_client_manager_assignment: SmtpClientManagerAssignment = new SmtpClientManagerAssignment(
-    [ 'luke.rieff@yandex.ru' ],
+    [ 'luke.rieff@yandex.ru', 'luke.rieffasdasda7s7d8asd@yandex.ru' ],
     'nonexisting@fannst.nl', buffer, result => {
       result.forEach(a => console.log(a))
     });
