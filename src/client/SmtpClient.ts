@@ -6,6 +6,7 @@ import { SmtpClientDNS } from "./SmtpClientDNS";
 import { SmtpClientStream } from "./SmtpClientStream";
 import { SmtpStream } from "../server/SmtpServerStream";
 import { Logger } from "../helpers/Logger";
+import { SmtpClientAssignmentError, SmtpClientAssignmentError_MailExchange } from "./SmtpCommanderAssignment";
 
 export interface SmtpClientOptions {
   debug?: boolean;
@@ -21,6 +22,10 @@ export declare interface SmtpClient {
   on(event: "response", listener: (response: SmtpResponse) => void): this;
 
   once(event: 'close', listener: () => void): this;
+
+  on(event: 'error', listener: (error: Error) => void): this;
+
+  once(event: 'error', listener: (error: Error) => void): this;
 }
 
 export class SmtpClient extends EventEmitter {
@@ -48,6 +53,7 @@ export class SmtpClient extends EventEmitter {
     // Registers the standard event listeners (for the socket).
     this._smtp_socket.on("connect", () => this._handle_connect());
     this._smtp_socket.on("upgrade", () => this._handle_upgrade());
+    this._smtp_socket.on('error', (error: Error) => this._handle_error(error));
     this._smtp_socket.on("data", (chunk: Buffer) =>
       this._smtp_stream.write(chunk)
     );
@@ -74,7 +80,11 @@ export class SmtpClient extends EventEmitter {
   protected static async _get_mx_exchanges(
     hostname: string
   ): Promise<string[]> {
-    return await SmtpClientDNS.mx(hostname);
+    try {
+      return await SmtpClientDNS.mx(hostname);
+    } catch (e) {
+      throw new SmtpClientAssignmentError('Could not resolve MX records.');
+    }
   }
 
   ////////////////////////////////////////////////
@@ -105,7 +115,9 @@ export class SmtpClient extends EventEmitter {
       }
 
       // Gets the exchanges.
-      const exchanges: string[] = await SmtpClient._get_mx_exchanges(hostname);
+      let exchanges: string[] = await SmtpClient._get_mx_exchanges(hostname);
+
+      // Emits the error.
       if (exchanges.length === 0) {
         throw new Error("Could not find any exchange from MX records.");
       }
@@ -245,5 +257,14 @@ export class SmtpClient extends EventEmitter {
     }
 
     this.emit("close");
+  }
+
+  /**
+   * Gets called when an error has occured.
+   * @param error the error.
+   * @protected
+   */
+  protected _handle_error(error: Error) {
+    this.emit('error', error);
   }
 }

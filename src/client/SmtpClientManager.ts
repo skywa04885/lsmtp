@@ -1,7 +1,5 @@
-import { SmtpClient } from "./SmtpClient";
-import {SmtpClientAssignment, SmtpClientAssignmentError, SmtpClientAssignmentResult} from "./SmtpCommanderAssignment";
+import {SmtpClientAssignment, SmtpClientAssignmentResult} from "./SmtpCommanderAssignment";
 import { SmtpClientPool, SmtpClientPoolOptions } from "./SmtpClientPool";
-import { Readable } from "stream";
 import { Logger } from "../helpers/Logger";
 import {LinkedList} from "../helpers/LinkedList";
 

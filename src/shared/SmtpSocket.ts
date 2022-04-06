@@ -8,6 +8,7 @@ export declare interface SmtpSocket {
     on(event: 'connect', listener: () => void): this;
     on(event: 'upgrade', listener: () => void): this;
     on(event: 'data', listener: (chunk: Buffer) => void): this;
+    on(event: 'error', listener: (error: Error) => void): this;
 }
 
 export class SmtpSocket extends EventEmitter {

@@ -13,11 +13,9 @@ import {
 import {
   SmtpClientAssignment,
   SmtpClientAssignmentError,
-  SmtpClientAssignmentError_CommandError,
-  SmtpClientAssignmentError_MailExchange,
-  SmtpClientAssignmentError_RecipientUnreachable,
+  SmtpClientAssignmentError_RecipientError,
+  SmtpClientAssignmentError_ResponseError,
   SmtpClientAssignmentError_SocketError,
-  SmtpClientAssignmentErrorType,
 } from "./SmtpCommanderAssignment";
 import { Queue } from "../helpers/Queue";
 import { DotEscapeEncodeStream } from "llibencoding";
@@ -61,6 +59,7 @@ export class SmtpClientCommander extends EventEmitter {
 
   protected _active_assignment_start?: Date;
   protected _active_assignment_errors?: SmtpClientAssignmentError[];
+  protected _active_assignment_failed_recipients?: number;
 
   public constructor(
     smtp_client: SmtpClient,
@@ -137,26 +136,10 @@ export class SmtpClientCommander extends EventEmitter {
   }
 
   /**
-   * Checks if the SMTP-UTF8 feature is enabled on the server.
-   */
-  public get supports_smtp_utf8(): boolean {
-    return this._server_opts!.features.are_set(
-      SmtpCommanderServerFeatures.SMTP_UTF8
-    );
-  }
-
-  /**
    * Gets the number of total enqueued assignments.
    */
   public get total_enqueued(): number {
     return this._total_enqueued;
-  }
-
-  /**
-   * Gets the total number of executed assignments.
-   */
-  public get total_executed(): number {
-    return this._total_executed;
   }
 
   /**
@@ -171,12 +154,7 @@ export class SmtpClientCommander extends EventEmitter {
   ////////////////////////////////////////////////
 
   protected _give_up_transaction(
-    error:
-      | SmtpClientAssignmentError
-      | SmtpClientAssignmentError_CommandError
-      | SmtpClientAssignmentError_SocketError
-      | SmtpClientAssignmentError_RecipientUnreachable
-      | SmtpClientAssignmentError_MailExchange
+    error: SmtpClientAssignmentError
   ): void {
     // Pushes the error.
     this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
@@ -190,14 +168,9 @@ export class SmtpClientCommander extends EventEmitter {
     if (this._flags.are_set(SmtpCommanderFlag.EXECUTING)) {
       this._logger?.error("Transaction closed prematurely.");
 
-      // Adds the error.
-      const error: SmtpClientAssignmentError_SocketError = {
-        type: SmtpClientAssignmentErrorType.SocketError,
-        error: new Error("Socket closed during transaction."),
-      };
-      this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
-
-      // Finishes the assignment.
+      // Pushes the error onto the errors array, and finishes
+      //  the transaction.
+      this._active_assignment_errors!.push(new SmtpClientAssignmentError_SocketError('Socket closed during transaction.'));
       this._transaction_finish();
     }
 
@@ -219,6 +192,10 @@ export class SmtpClientCommander extends EventEmitter {
     this._set_noop_timeout();
   }
 
+  /**
+   * Sets the new timeout for sending the next NOOP.
+   * @protected
+   */
   protected _set_noop_timeout(): void {
     this._timer_ref = setTimeout(() => {
       // Logs that we're sending the NOOP
@@ -323,6 +300,11 @@ export class SmtpClientCommander extends EventEmitter {
     this._transaction_send_rset(assignment);
   }
 
+  /**
+   * Gets called when we want to send the RSET command.
+   * @param assignment the assignment.
+   * @protected
+   */
   protected _transaction_send_rset(assignment: SmtpClientAssignment) {
     this._logger?.trace(`Sending RSET command to reset session ...`);
 
@@ -346,10 +328,7 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Makes sure that the status is valid.
     if (response.status !== 250) {
-      this._give_up_transaction({
-        type: SmtpClientAssignmentErrorType.CommandError,
-        response,
-      });
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Status code did not match desired code: 250'));
       return;
     }
 
@@ -357,12 +336,20 @@ export class SmtpClientCommander extends EventEmitter {
     this._transaction_send_from(assignment);
   }
 
+  /**
+   * Gets called when we want to send the mail from command.
+   * @param assignment the assignment.
+   * @protected
+   */
   protected _transaction_send_from(assignment: SmtpClientAssignment) {
     this._logger?.trace(`Sending mail from command ...`);
 
+    // Sets the response listener.
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._transaction_handle_from_response(assignment, response)
     );
+    
+    // Sends the mail from command.
     this._smtp_client.cmd_mail_from(assignment.from);
   }
 
@@ -382,15 +369,13 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Makes sure that the status is valid.
     if (response.status !== 250) {
-      this._give_up_transaction({
-        type: SmtpClientAssignmentErrorType.CommandError,
-        response,
-      });
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Status code did not match desired code: 250'));
       return;
     }
 
     // Bootstraps the RCPT to sequence, by default the index will be zero, but this will increase
     //  each RCPT TO we send, until we've reached the number of recipients and proceed to DATA/ BDAT.
+    this._active_assignment_failed_recipients = 0;
     this._transaction_send_rcpt_to(assignment);
   }
 
@@ -433,13 +418,22 @@ export class SmtpClientCommander extends EventEmitter {
     // Makes sure that the status is valid, if not push a recipient error,
     //  and if all recipients were unreachable, we will give up.
     if (response.status !== 250) {
-      const error: SmtpClientAssignmentError_RecipientUnreachable = {
-        type: SmtpClientAssignmentErrorType.RecipientUnreachable,
-        response,
-        recipient: assignment.to[index],
-      };
-      this._active_assignment_errors!.push(error);
-      return;
+      // Increments the number of failed recipients.
+      ++this._active_assignment_failed_recipients!;
+
+      // Pushes the error.
+      const error: SmtpClientAssignmentError = new SmtpClientAssignmentError_RecipientError(
+        assignment.to[index], response, 'Response code did not match desired code: 250'
+      )
+
+      // Checks if any recipients succeeded, if not then just give up, else just
+      //  push the error.
+      if (this._active_assignment_failed_recipients === assignment.to.length) {
+        this._give_up_transaction(error);
+        return;
+      } else {
+        this._active_assignment_errors!.push(error);
+      }
     }
 
     // Checks if there is another recipient to send, if so trigger that.
@@ -517,14 +511,10 @@ export class SmtpClientCommander extends EventEmitter {
   ): void {
     this._logger?.trace("Received data complete response.");
 
-    // Makes sure that the response contains the valid status code, if not push an error
-    //  to the errors, and just continue, since it's the last step anyways.
+    // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
-      const error: SmtpClientAssignmentError_CommandError = {
-        type: SmtpClientAssignmentErrorType.CommandError,
-        response,
-      };
-      this._active_assignment_errors!.push(error);
+      this._give_up_transaction(new SmtpClientAssignmentError_ResponseError(response, 'Response code did not match desired code: 250'));
+      return;
     }
 
     // Calls the handle done, and maybe starts the transmission of another message.

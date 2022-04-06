@@ -2,12 +2,16 @@ import { EventEmitter } from "events";
 import { LinkedList } from "../helpers/LinkedList";
 import { Logger } from "../helpers/Logger";
 import { Queue } from "../helpers/Queue";
-import { SmtpClientAssignment } from "./SmtpCommanderAssignment";
+import {
+  SmtpClientAssignment,
+  SmtpClientAssignmentError,
+} from "./SmtpCommanderAssignment";
 import {
   SmtpClientCommander,
   SmtpClientCommanderOptions,
 } from "./SmtpClientCommander";
 import { SmtpClient, SmtpClientOptions } from "./SmtpClient";
+import { SmtpClientError } from "./SmtpClientError";
 
 export interface SmtpClientPoolOptions {
   client_options?: SmtpClientOptions;
@@ -17,6 +21,7 @@ export interface SmtpClientPoolOptions {
 
 export declare interface SmtpClientPool {
   on(event: "destroy", listener: () => void): this;
+  once(event: "destroy", listener: () => void): this;
 }
 
 export class SmtpClientPool extends EventEmitter {
@@ -95,8 +100,25 @@ export class SmtpClientPool extends EventEmitter {
       }
     });
 
-    // Connects the client.
-    await client.connect(this._hostname, this._port, this._secure, true);
+    // Connects the client, if this fails for some reason, we immediately
+    //  call the error callback.
+    try {
+      await client.connect(this._hostname, this._port, this._secure, true);
+    } catch (e) {
+      // Makes sure the error is an client assignment error, if not
+      //  just throw it again (to crash).
+      if (!(e instanceof SmtpClientAssignmentError)) {
+        throw e;
+      }
+
+      // Removes the commander from the nodes.
+      this._nodes.remove(commander);
+
+      // Calls the assignment callback.
+      assignment.callback({
+        errors: [ e ]
+      });
+    }
   }
 
   /**
