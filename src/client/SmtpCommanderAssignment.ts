@@ -2,40 +2,35 @@ import { Readable } from "stream";
 import { SmtpCommand } from "../shared/SmtpCommand";
 import { SmtpResponse } from "../shared/SmtpResponse";
 
-export enum SmtpClientAssignmentErrorType {
-  MailExchange,
-  SocketError,
-  CommandError,
-  RecipientUnreachable,
+export class SmtpClientAssignmentError extends Error {}
+
+export class SmtpClientAssignmentError_MailExchange extends SmtpClientAssignmentError {
+  public constructor(public exchanges: string[], message?: string) {
+    super(message);
+  }
 }
 
-export interface SmtpClientAssignmentError {
-  type: SmtpClientAssignmentErrorType;
+export class SmtpClientAssignmentError_SocketError extends SmtpClientAssignmentError {}
+
+export class SmtpClientAssignmentError_ResponseError extends SmtpClientAssignmentError {
+  public constructor(public response: SmtpResponse, message?: string) {
+    super(message);
+  }
 }
 
-export interface SmtpClientAssignmentError_MailExchange
-  extends SmtpClientAssignmentError {
-  exchanges: [{ exchange: string; priority: number; error: Error }];
-}
-
-export interface SmtpClientAssignmentError_SocketError
-  extends SmtpClientAssignmentError {
-  error: Error;
-}
-
-export interface SmtpClientAssignmentError_CommandError
-  extends SmtpClientAssignmentError {
-  response: SmtpResponse;
-}
-
-export interface SmtpClientAssignmentError_RecipientUnreachable
-  extends SmtpClientAssignmentError_CommandError {
-  recipient: string;
+export class SmtpClientAssignmentError_RecipientError extends SmtpClientAssignmentError {
+  public constructor(
+    public recipient: string,
+    public response: SmtpResponse,
+    message?: string
+  ) {
+    super(message);
+  }
 }
 
 export interface SmtpClientAssignmentResult {
-  transfer_start: Date;
-  transfer_end: Date;
+  transfer_start?: Date;
+  transfer_end?: Date;
   errors: SmtpClientAssignmentError[];
 }
 
