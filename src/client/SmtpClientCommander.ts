@@ -15,7 +15,7 @@ import {
   SmtpCommanderServerOpts,
 } from "./SmtpClientServerConfig";
 import {
-  SmtpClientAssignment,
+  SmtpClientCommanderAssignment,
   SmtpClientAssignmentError,
   SmtpClientAssignmentError_RecipientError,
   SmtpClientAssignmentError_ResponseError,
@@ -57,7 +57,7 @@ export class SmtpClientCommander extends EventEmitter {
   protected _flags: Flags;
   protected _server_opts?: SmtpCommanderServerOpts;
   protected _timer_ref?: NodeJS.Timeout;
-  protected _assignment_queue: Queue<SmtpClientAssignment>;
+  protected _assignment_queue: Queue<SmtpClientCommanderAssignment>;
   protected _total_enqueued: number;
   protected _total_executed: number;
 
@@ -65,6 +65,11 @@ export class SmtpClientCommander extends EventEmitter {
   protected _active_assignment_errors?: SmtpClientAssignmentError[];
   protected _active_assignment_failed_recipients?: number;
 
+  /**
+   * Constructs a new smtp client commander.
+   * @param smtp_client the smtp client.
+   * @param options the options.
+   */
   public constructor(
     smtp_client: SmtpClient,
     options: SmtpClientCommanderOptions = {}
@@ -87,7 +92,7 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Sets the default variable values.
     this._flags = new Flags();
-    this._assignment_queue = new Queue<SmtpClientAssignment>();
+    this._assignment_queue = new Queue<SmtpClientCommanderAssignment>();
     this._total_enqueued = this._total_executed = 0;
 
     // Registers the events.
@@ -97,7 +102,11 @@ export class SmtpClientCommander extends EventEmitter {
     );
   }
 
-  public assign(assignment: SmtpClientAssignment) {
+  /**
+   * Assigns a new assignment to the commander.
+   * @param assignment the assignment.
+   */
+  public assign(assignment: SmtpClientCommanderAssignment) {
     this._logger?.trace(
       `Got new assignment, from: ${assignment.from}, to: ${assignment.to.join(
         ", "
@@ -142,7 +151,7 @@ export class SmtpClientCommander extends EventEmitter {
   /**
    * Gets the assignment queue.
    */
-  public get assignment_queue(): Queue<SmtpClientAssignment> {
+  public get assignment_queue(): Queue<SmtpClientCommanderAssignment> {
     return this._assignment_queue;
   }
 
@@ -164,6 +173,10 @@ export class SmtpClientCommander extends EventEmitter {
   // General Handlers.
   ////////////////////////////////////////////////
 
+  /**
+   * Gets called when we should give up an transaction.
+   * @param error the error.
+   */
   protected _give_up_transaction(error: SmtpClientAssignmentError): void {
     // Pushes the error.
     this._active_assignment_errors!.push(error as SmtpClientAssignmentError);
@@ -172,6 +185,32 @@ export class SmtpClientCommander extends EventEmitter {
     this._handle_done(false);
   }
 
+  /**
+   * Gets called when an error occured in the socket level.
+   * @param error the error.
+   */
+  protected _handle_error(error: Error): void {
+    // If executing, add an error.
+    if (this._flags.are_set(SmtpCommanderFlag.EXECUTING)) {
+      this._logger?.error("An error occured during the transaction, closing ...");
+
+      // Pushes the error onto the errors array, and finishes
+      //  the transaction.
+      this._active_assignment_errors!.push(
+        new SmtpClientAssignmentError_SocketError(
+          `An error occured during the transmission: ${error.name} - ${error.message}`
+        )
+      );
+      this._transaction_finish();
+    }    
+
+    // Closes the socket, which will handle the rest, including the destroy.
+    this._smtp_client.smtp_socket.close();
+  }
+
+  /**
+   * Handles the close event of the socket.
+   */
   protected _handle_close(): void {
     // If executing, finish the assignment with an error.
     if (this._flags.are_set(SmtpCommanderFlag.EXECUTING)) {
@@ -191,6 +230,10 @@ export class SmtpClientCommander extends EventEmitter {
     this.emit("destroy");
   }
 
+  /**
+   * Handles the NOOP response.
+   * @param response the response.
+   */
   protected _handle_noop(response: SmtpResponse): void {
     // Logs that we've received the ACK.
     this._logger?.trace(`Received NOOP response, setting timeout again ..`);
@@ -294,7 +337,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_begin(assignment: SmtpClientAssignment): void {
+  protected _transaction_begin(assignment: SmtpClientCommanderAssignment): void {
     // Sets the executing bit to true.
     this._flags.set(SmtpCommanderFlag.EXECUTING);
 
@@ -318,7 +361,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_rset(assignment: SmtpClientAssignment) {
+  protected _transaction_send_rset(assignment: SmtpClientCommanderAssignment) {
     this._logger?.trace(`Sending RSET command to reset session ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
@@ -334,7 +377,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_rset_response(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ) {
     this._logger?.trace(`Received RSET Response, beginning transaction ...`);
@@ -359,7 +402,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_from(assignment: SmtpClientAssignment) {
+  protected _transaction_send_from(assignment: SmtpClientCommanderAssignment) {
     this._logger?.trace(`Sending mail from command ...`);
 
     // Sets the response listener.
@@ -378,7 +421,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_from_response(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.trace(
@@ -409,7 +452,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_send_rcpt_to(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     index: number = 0
   ): void {
     this._logger?.trace(
@@ -430,7 +473,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_rcpt_to(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse,
     index: number
   ): void {
@@ -480,7 +523,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_data(assignment: SmtpClientAssignment): void {
+  protected _transaction_send_data(assignment: SmtpClientCommanderAssignment): void {
     this._logger?.trace(`Sending data command ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
@@ -496,7 +539,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_data_response(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.trace(
@@ -544,7 +587,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_data_complete_response(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.trace("Received data complete response.");

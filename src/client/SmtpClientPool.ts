@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { LinkedList } from "../helpers/LinkedList";
 import { Logger } from "../helpers/Logger";
-import { SmtpClientAssignment } from "./SmtpCommanderAssignment";
+import { SmtpClientCommanderAssignment } from "./SmtpCommanderAssignment";
 import {
   SmtpClientCommander,
   SmtpClientCommanderOptions,
@@ -100,7 +100,7 @@ export class SmtpClientPool extends EventEmitter {
    * Assigns a new assignment to the pool.
    * @param assignment the assignment.
    */
-  public assign(assignment: SmtpClientAssignment): void {
+  public assign(assignment: SmtpClientCommanderAssignment): void {
     // Logs the message indicating where the assignment is going towards.
     this._logger?.trace(
       `We've received a new assignment to: (${assignment.to.join(", ")})`

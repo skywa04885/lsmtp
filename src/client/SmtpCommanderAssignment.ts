@@ -34,7 +34,7 @@ export interface SmtpClientAssignmentResult {
   errors: SmtpClientAssignmentError[];
 }
 
-export interface SmtpClientAssignment {
+export interface SmtpClientCommanderAssignment {
   // Data.
   domain: string;
   from: string;

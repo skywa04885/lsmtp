@@ -1,5 +1,5 @@
 import {
-  SmtpClientAssignment,
+  SmtpClientCommanderAssignment,
   SmtpClientAssignmentResult,
 } from "./SmtpCommanderAssignment";
 import { SmtpClientPool, SmtpClientPoolOptions } from "./SmtpClientPool";
@@ -12,8 +12,8 @@ export type SmtpClientManagerAssignmentCallback = (
 ) => void;
 
 export class SmtpClientManagerAssignment {
-  protected _assignments_in_progress: LinkedList<SmtpClientAssignment> =
-    new LinkedList<SmtpClientAssignment>();
+  protected _assignments_in_progress: LinkedList<SmtpClientCommanderAssignment> =
+    new LinkedList<SmtpClientCommanderAssignment>();
   protected results: SmtpClientAssignmentResult[] = [];
 
   /**
@@ -34,13 +34,13 @@ export class SmtpClientManagerAssignment {
    * Prepares all the assignments and pushes them into the queue.
    * @returns the assignments.
    */
-  public prepare_client_assignments(): SmtpClientAssignment[] {
-    let result: SmtpClientAssignment[] = [];
+  public prepare_client_assignments(): SmtpClientCommanderAssignment[] {
+    let result: SmtpClientCommanderAssignment[] = [];
 
     const dam: { [key: string]: string[] } = this.domain_address_map;
     for (const [domain, addresses] of Object.entries(dam)) {
       // Creates the assignment.
-      let assignment: SmtpClientAssignment = {
+      let assignment: SmtpClientCommanderAssignment = {
         domain,
         to: addresses,
         from: this.from,
@@ -96,7 +96,7 @@ export class SmtpClientManagerAssignment {
    * @param result the result of the commander.
    */
   protected _on_completion(
-    assignment: SmtpClientAssignment,
+    assignment: SmtpClientCommanderAssignment,
     result: SmtpClientAssignmentResult
   ): void {
     // Removes the assignment from the in progress assignments.
@@ -120,7 +120,7 @@ export class SmtpClientManagerAssignment {
    * @param error the error.
    * @returns nothing.
    */
-  public on_error(assignment: SmtpClientAssignment, error: Error): void {
+  public on_error(assignment: SmtpClientCommanderAssignment, error: Error): void {
     // Removes the assignment from the in progress assignments.
     this._assignments_in_progress.remove(assignment);
 
@@ -205,7 +205,7 @@ export class SmtpClientManager {
    * @protected
    */
   protected async _assign_to_pool(
-    assignment: SmtpClientAssignment
+    assignment: SmtpClientCommanderAssignment
   ): Promise<void> {
     const pool: SmtpClientPool = await this._get_or_create_pool(
       assignment.domain
@@ -221,7 +221,7 @@ export class SmtpClientManager {
     man_assignment: SmtpClientManagerAssignment
   ): Promise<void> {
     // Gets all the client assignments from the manager assignment.
-    const assignments: SmtpClientAssignment[] =
+    const assignments: SmtpClientCommanderAssignment[] =
       man_assignment.prepare_client_assignments();
 
     // Attempts to assign all the assignments to pools.
