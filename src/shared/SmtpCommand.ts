@@ -24,6 +24,14 @@ export enum SmtpCommandType {
   StartTLS = "STARTTLS",
 }
 
+export enum SmtpMailPrefix {
+  From = 'FROM',
+}
+
+export enum SmtpRcptPrefix {
+  To = 'TO',
+}
+
 export class SmtpCommand {
   protected splitted_cache: string[] | null;
 

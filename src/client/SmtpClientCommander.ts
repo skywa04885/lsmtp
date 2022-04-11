@@ -1,3 +1,7 @@
+/*
+  Oh my fucking god, this code is so fucking messy... I Don't care though!
+*/
+
 import EventEmitter from "events";
 import { Flags } from "../helpers/Flags";
 import { Logger } from "../helpers/Logger";

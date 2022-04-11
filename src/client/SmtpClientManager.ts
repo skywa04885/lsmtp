@@ -16,6 +16,13 @@ export class SmtpClientManagerAssignment {
     new LinkedList<SmtpClientAssignment>();
   protected results: SmtpClientAssignmentResult[] = [];
 
+  /**
+   * Creates a new manager assignment.
+   * @param to the recipients.
+   * @param from the sender.
+   * @param data the data.
+   * @param callback the callback.
+   */
   public constructor(
     public readonly to: string[],
     public readonly from: string,
@@ -23,6 +30,10 @@ export class SmtpClientManagerAssignment {
     public readonly callback: SmtpClientManagerAssignmentCallback
   ) {}
 
+  /**
+   * Prepares all the assignments and pushes them into the queue.
+   * @returns the assignments.
+   */
   public prepare_client_assignments(): SmtpClientAssignment[] {
     let result: SmtpClientAssignment[] = [];
 
@@ -87,12 +98,36 @@ export class SmtpClientManagerAssignment {
   protected _on_completion(
     assignment: SmtpClientAssignment,
     result: SmtpClientAssignmentResult
-  ) {
+  ): void {
     // Removes the assignment from the in progress assignments.
     this._assignments_in_progress.remove(assignment);
 
     // Pushes the result.
     this.results.push(result);
+
+    // Checks if the manager assignment is done.
+    if (!this._assignments_in_progress.empty) {
+      return;
+    }
+
+    // The assignment is completed, call the callback.
+    this.callback(this.results);
+  }
+
+  /**
+   * Gets called when an assignment went wrong before actual assignment.
+   * @param assignment the assignment that had a pre transition error.
+   * @param error the error.
+   * @returns nothing.
+   */
+  public on_error(assignment: SmtpClientAssignment, error: Error): void {
+    // Removes the assignment from the in progress assignments.
+    this._assignments_in_progress.remove(assignment);
+
+    // Pushes the result.
+    this.results.push({
+      errors: [error],
+    });
 
     // Checks if the manager assignment is done.
     if (!this._assignments_in_progress.empty) {
@@ -166,15 +201,15 @@ export class SmtpClientManager {
 
   /**
    * Assigns the given assignment to the given domain.
-   * @param domain the domain.
    * @param assignment the assignment.
    * @protected
    */
   protected async _assign_to_pool(
-    domain: string,
     assignment: SmtpClientAssignment
   ): Promise<void> {
-    const pool: SmtpClientPool = await this._get_or_create_pool(domain);
+    const pool: SmtpClientPool = await this._get_or_create_pool(
+      assignment.domain
+    );
     pool.assign(assignment);
   }
 
@@ -185,10 +220,17 @@ export class SmtpClientManager {
   public async assign(
     man_assignment: SmtpClientManagerAssignment
   ): Promise<void> {
+    // Gets all the client assignments from the manager assignment.
     const assignments: SmtpClientAssignment[] =
       man_assignment.prepare_client_assignments();
+
+    // Attempts to assign all the assignments to pools.
     for (const assignment of assignments) {
-      await this._assign_to_pool(assignment.domain, assignment);
+      try {
+        await this._assign_to_pool(assignment);
+      } catch (e) {
+        man_assignment.on_error(assignment, e as Error);
+      }
     }
   }
 }
