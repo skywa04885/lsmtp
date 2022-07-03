@@ -1,4 +1,4 @@
-import { PolicyError } from "../shared/SmtpError";
+import { SmtpPolicyError } from "../shared/SmtpError";
 import {
   SMTP_EMAIL_REGEX,
   SMTP_RELAY_TARGET_REGEX,

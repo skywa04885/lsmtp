@@ -9,11 +9,11 @@ import {
   MAX_MESSAGE_SIZE,
 } from "../shared/SmtpConstants";
 import {
-  BadSequenceError,
-  CommandDisabled,
-  InvalidCommandArguments,
-  InvalidCommandError,
-  PolicyError,
+  SmtpBadSequenceError,
+  SmtpCommandDisabled,
+  SmtpInvalidCommandArguments,
+  SmtpInvalidCommandError,
+  SmtpPolicyError,
 } from "../shared/SmtpError";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpMultipleLineResponse } from "../shared/SmtpMutipleLineResponse";
@@ -47,7 +47,7 @@ function __auth_plain_parse(base64: string): string[] {
 
   // Makes sure the first char is '\x00';
   if (!decoded.startsWith("\x00")) {
-    throw new InvalidCommandArguments("Does not start with null terminator.");
+    throw new SmtpInvalidCommandArguments("Does not start with null terminator.");
   }
 
   // Removes the first char.
@@ -56,7 +56,7 @@ function __auth_plain_parse(base64: string): string[] {
   // Splits the decoded string at '\x00', and makes sure there are two.
   const segments: string[] = decoded.split("\x00");
   if (segments.length !== 2) {
-    throw new InvalidCommandArguments("Invalid segment count.");
+    throw new SmtpInvalidCommandArguments("Invalid segment count.");
   }
 
   // Returns both segments.
@@ -85,14 +85,14 @@ function __mail_rcpt_address_parse(
 
   // Makes sure the keyword is valid.
   if (keyword.toUpperCase() !== expected_keyword.toUpperCase()) {
-    throw new InvalidCommandArguments(
+    throw new SmtpInvalidCommandArguments(
       `Keyword mismatch, expected ${expected_keyword.toUpperCase()} got ${keyword.toUpperCase()}`
     );
   }
 
   // Makes sure the address has the valid format.
   if (!address.startsWith("<") || !address.endsWith(">")) {
-    throw new InvalidCommandArguments(
+    throw new SmtpInvalidCommandArguments(
       `Address '${address}' is not enclosed in \'<\' and \'>\'.`
     );
   }
@@ -203,7 +203,7 @@ export class SmtpServerConnection extends EventEmitter {
     try {
       command = SmtpCommand.decode(data);
     } catch (e) {
-      if (e instanceof InvalidCommandError) {
+      if (e instanceof SmtpInvalidCommandError) {
         this.smtp_socket.write(
           new SmtpResponse(
             550,
@@ -287,7 +287,7 @@ export class SmtpServerConnection extends EventEmitter {
           ).encode(true)
         );
         this.smtp_socket.close();
-      } else if (e instanceof PolicyError) {
+      } else if (e instanceof SmtpPolicyError) {
         this.smtp_socket.write(
           new SmtpResponse(
             550,
@@ -295,7 +295,7 @@ export class SmtpServerConnection extends EventEmitter {
             new SmtpEnhancedStatusCode(5, 5, 1)
           ).encode(true)
         );
-      } else if (e instanceof BadSequenceError) {
+      } else if (e instanceof SmtpBadSequenceError) {
         this.smtp_socket.write(
           new SmtpResponse(
             503,
@@ -303,7 +303,7 @@ export class SmtpServerConnection extends EventEmitter {
             new SmtpEnhancedStatusCode(5, 5, 1)
           ).encode(true)
         );
-      } else if (e instanceof InvalidCommandArguments) {
+      } else if (e instanceof SmtpInvalidCommandArguments) {
         this.smtp_socket.write(
           new SmtpResponse(
             503,
@@ -311,7 +311,7 @@ export class SmtpServerConnection extends EventEmitter {
             new SmtpEnhancedStatusCode(5, 5, 4)
           ).encode(true)
         );
-      } else if (e instanceof CommandDisabled) {
+      } else if (e instanceof SmtpCommandDisabled) {
         this.smtp_socket.write(
           new SmtpResponse(
             502,
@@ -500,7 +500,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_auth(command: SmtpCommand): Promise<void> {
     // Checks if the command is disabled.
     if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Auth)) {
-      throw new CommandDisabled();
+      throw new SmtpCommandDisabled();
     }
 
     // Makes sure we're allowed to perform this command.
@@ -509,12 +509,12 @@ export class SmtpServerConnection extends EventEmitter {
       this.session.get_flags(SmtpServerSessionFlag.From) ||
       this.session.get_flags(SmtpServerSessionFlag.Authenticated)
     ) {
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     }
 
     // Checks if there are arguments at all.
     if (!command.arguments || command.arguments.length === 0) {
-      throw new InvalidCommandArguments("No arguments.");
+      throw new SmtpInvalidCommandArguments("No arguments.");
     }
 
     // Gets the first argument, indicating the mechanism.
@@ -573,7 +573,7 @@ export class SmtpServerConnection extends EventEmitter {
       case SmtpAuthType.XOAUTH2: {
         // Makes sure there are two arguments.
         if (command.arguments.length !== 2) {
-          throw new InvalidCommandArguments();
+          throw new SmtpInvalidCommandArguments();
         }
 
         // Parses the XOAUTH2 token.
@@ -581,7 +581,7 @@ export class SmtpServerConnection extends EventEmitter {
         try {
           token = XOATH2Token.decode(command.arguments[1].trim());
         } catch (e) {
-          throw new InvalidCommandArguments((e as Error).message);
+          throw new SmtpInvalidCommandArguments((e as Error).message);
         }
 
         // Validates the token.
@@ -614,7 +614,7 @@ export class SmtpServerConnection extends EventEmitter {
       }
 
       default:
-        throw new InvalidCommandArguments();
+        throw new SmtpInvalidCommandArguments();
     }
   }
 
@@ -625,7 +625,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_bdat(command: SmtpCommand): Promise<void> {
     // Checks if the command is disabled.
     if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Chunking)) {
-      throw new CommandDisabled();
+      throw new SmtpCommandDisabled();
     }
 
     // Checks the flags to make sure we're allowed to execute this.
@@ -637,25 +637,25 @@ export class SmtpServerConnection extends EventEmitter {
       )
     ) {
       // Not in the correct state yet.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (
       this.session.get_flags(SmtpServerSessionFlag.RegularTransferMethod)
     ) {
       // Using other method.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (this.session.get_flags(SmtpServerSessionFlag.DataTransfered)) {
       // Data already transferred.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     }
 
     // Makes sure it doesn't have arguments.
     if (!command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Makes sure the number of arguments is not larger than two, else error.
     if (command.arguments.length > 2) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Checks if we're dealing with a single argument, if so it's not the last.
@@ -693,20 +693,20 @@ export class SmtpServerConnection extends EventEmitter {
       )
     ) {
       // Not in the correct state yet.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (
       this.session.get_flags(SmtpServerSessionFlag.BinaryDataTransferMethod)
     ) {
       // Using other method.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (this.session.get_flags(SmtpServerSessionFlag.DataTransfered)) {
       // Data already transferred.
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     }
 
     // Makes sure it doesn't have arguments.
     if (command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Sets the flags.
@@ -732,7 +732,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_quit(command: SmtpCommand): Promise<void> {
     // Makes sure it doesn't have arguments.
     if (command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Writes the response.
@@ -755,7 +755,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_noop(command: SmtpCommand): Promise<void> {
     // Makes sure it doesn't have arguments.
     if (command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Writes the response.
@@ -775,7 +775,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_help(command: SmtpCommand): Promise<void> {
     // Makes sure it doesn't have arguments.
     if (command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Writes the response.
@@ -896,7 +896,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_mail(command: SmtpCommand): Promise<void> {
     // Checks the flags to make sure the command is allowed to execute.
     if (!this.session.get_flags(SmtpServerSessionFlag.Introduced)) {
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (this.session.get_flags(SmtpServerSessionFlag.From)) {
       this.smtp_socket.write(
         new SmtpResponse(
@@ -963,9 +963,9 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_rcpt(command: SmtpCommand): Promise<void> {
     // Checks the flags to make sure we're allowed to execute this.
     if (!this.session.get_flags(SmtpServerSessionFlag.Introduced)) {
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     } else if (!this.session.get_flags(SmtpServerSessionFlag.From)) {
-      throw new BadSequenceError();
+      throw new SmtpBadSequenceError();
     }
 
     // If there are no arguments, send error.
@@ -989,7 +989,7 @@ export class SmtpServerConnection extends EventEmitter {
     const target: SmtpServerMessageTarget =
       SmtpServerMessageTarget.decode(address);
     if (target.type === SmtpServerMessageTargetType.Relay) {
-      throw new PolicyError("Relaying is not supported.");
+      throw new SmtpPolicyError("Relaying is not supported.");
     }
 
     // Handles the target, this will perform extra validation (if needed).
@@ -1041,7 +1041,7 @@ export class SmtpServerConnection extends EventEmitter {
   protected async _handle_rset(command: SmtpCommand) {
     // Makes sure it doesn't have arguments.
     if (command.arguments) {
-      throw new InvalidCommandArguments();
+      throw new SmtpInvalidCommandArguments();
     }
 
     // Resets the state.
@@ -1064,7 +1064,7 @@ export class SmtpServerConnection extends EventEmitter {
   public async _handle_vrfy(command: SmtpCommand): Promise<void> {
     // Checks if the command is disabled.
     if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Vrfy)) {
-      throw new CommandDisabled();
+      throw new SmtpCommandDisabled();
     }
 
     // Makes sure there are arguments.
