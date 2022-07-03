@@ -4,6 +4,8 @@ import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServerConnection } from "./SmtpServerConnection";
 import { SmtpServerMail } from "./SmtpServerMail";
 import { XOATH2Token } from "lxoauth2/dist/XOAUTH2Token";
+import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
+import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 
 export enum SmtpServerFeatureFlag {
   Chunking = 1 << 0, // Chunking and BinaryMIME.
@@ -16,14 +18,14 @@ export enum SmtpServerFeatureFlag {
 }
 
 export interface SmtpServerConfigCallbacks {
-  validate_from: (
-    mailbox: string,
+  handle_mail_from: (
+    address: string,
     connection: SmtpServerConnection
-  ) => Promise<boolean>;
-  validate_to: (
-    mailbox: string,
+  ) => Promise<SmtpServerMessageFrom | Error>;
+  handle_rcpt_to: (
+    target: SmtpServerMessageTarget,
     connection: SmtpServerConnection
-  ) => Promise<boolean>;
+  ) => Promise<null | Error>;
   verify_name: (
     name: string,
     connection: SmtpServerConnection

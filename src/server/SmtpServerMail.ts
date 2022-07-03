@@ -1,3 +1,4 @@
+import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
 export interface SmtpServerMailMeta {
@@ -12,7 +13,7 @@ export interface SmtpServerMailMeta {
 export class SmtpServerMail {
   public constructor(
     public readonly contents: string,
-    public readonly from: string,
+    public readonly from: SmtpServerMessageFrom,
     public readonly to: SmtpServerMessageTarget[],
     public readonly meta: SmtpServerMailMeta
   ) {}

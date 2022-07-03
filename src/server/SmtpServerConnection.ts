@@ -24,6 +24,7 @@ import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServer } from "./SmtpServer";
 import { SmtpServerFeatureFlag } from "./SmtpServerConfig";
 import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
+import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 import {
   SmtpServerMessageTarget,
   SmtpServerMessageTargetType,
@@ -183,7 +184,7 @@ export class SmtpServerConnection extends EventEmitter {
     // Constructs the mail.
     const mail: SmtpServerMail = new SmtpServerMail(
       this.session.data as string,
-      this.session.from as string,
+      this.session.from as SmtpServerMessageFrom,
       this.session.to as SmtpServerMessageTarget[],
       meta
     );
@@ -932,8 +933,15 @@ export class SmtpServerConnection extends EventEmitter {
       throw new SyntaxError("Email RegExp failed.");
     }
 
+    // Handles the from event, and checks if we're dealing with an error
+    //  if so we will return the error.
+    const handlerResult: SmtpServerMessageFrom | Error = await this.server.config.callbacks.handle_mail_from(address, this);
+    if (handlerResult instanceof Error) {
+      throw handlerResult;
+    }
+
     // Sets the from.
-    this.session.from = address;
+    this.session.from = handlerResult;
 
     // Sets the flags.
     this.session.set_flags(SmtpServerSessionFlag.From);
@@ -982,6 +990,12 @@ export class SmtpServerConnection extends EventEmitter {
       SmtpServerMessageTarget.decode(address);
     if (target.type === SmtpServerMessageTargetType.Relay) {
       throw new PolicyError("Relaying is not supported.");
+    }
+
+    // Handles the target, this will perform extra validation (if needed).
+    const handlerResult: Error | null = await this.server.config.callbacks.handle_rcpt_to(target, this);
+    if (handlerResult !== null) {
+      throw handlerResult;
     }
 
     // Makes sure the email is not yet in the array.

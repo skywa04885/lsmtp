@@ -2,6 +2,7 @@ import { LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
+import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
 const STATE_RESET = SmtpSessionState.Command;
@@ -21,7 +22,7 @@ export enum SmtpServerSessionFlag {
 export class SmtpServerSession {
   public invalid_command_count: number = 0;
   public remote_domain: string | null = null;
-  public from: string | null = null;
+  public from: SmtpServerMessageFrom | null = null;
   public to: SmtpServerMessageTarget[] | null = null;
   public state: SmtpSessionState = STATE_RESET;
   public data: string | null = null;
