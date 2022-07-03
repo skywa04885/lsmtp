@@ -985,17 +985,10 @@ export class SmtpServerConnection extends EventEmitter {
     const args: string[] = command.arguments as string[];
     const address = __mail_rcpt_address_parse(args[0], "TO");
 
-    // Parses the target, and if it is relay, throw a policy error.
-    const target: SmtpServerMessageTarget =
-      SmtpServerMessageTarget.decode(address);
-    if (target.type === SmtpServerMessageTargetType.Relay) {
-      throw new SmtpPolicyError("Relaying is not supported.");
-    }
-
     // Handles the target, this will perform extra validation (if needed).
-    const handlerResult: Error | null = await this.server.config.callbacks.handle_rcpt_to(target, this);
-    if (handlerResult !== null) {
-      throw handlerResult;
+    const target: SmtpServerMessageTarget | Error = await this.server.config.callbacks.handle_rcpt_to(address, this);
+    if (target instanceof Error) {
+      throw target;
     }
 
     // Makes sure the email is not yet in the array.

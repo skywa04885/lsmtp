@@ -23,9 +23,9 @@ export interface SmtpServerConfigCallbacks {
     connection: SmtpServerConnection
   ) => Promise<SmtpServerMessageFrom | Error>;
   handle_rcpt_to: (
-    target: SmtpServerMessageTarget,
+    address: string,
     connection: SmtpServerConnection
-  ) => Promise<null | Error>;
+  ) => Promise<SmtpServerMessageTarget | Error>;
   verify_name: (
     name: string,
     connection: SmtpServerConnection
