@@ -20,6 +20,7 @@ import { SmtpMultipleLineResponse } from "./shared/SmtpMutipleLineResponse";
 import { SmtpSocket } from "./shared/SmtpSocket";
 import { SmtpUser } from "./shared/SmtpUser";
 import { SmtpMailExchanges } from "./SmtpMailExchanges";
+import { SmtpServerMessageFrom, SmtpServerMessageFromType } from "./server/SmtpServerMessageFrom";
 
 export {
   SmtpClient,
@@ -47,5 +48,7 @@ export {
   SmtpMultipleLineResponse,
   SmtpSocket,
   SmtpUser,
-  SmtpMailExchanges
+  SmtpMailExchanges,
+  SmtpServerMessageFrom,
+  SmtpServerMessageFromType,
 }
