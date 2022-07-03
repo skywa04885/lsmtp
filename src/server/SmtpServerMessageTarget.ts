@@ -22,7 +22,8 @@ export class SmtpServerMessageTarget {
   public constructor(
     public type: SmtpServerMessageTargetType,
     public readonly address: string,
-    public readonly relay_to: string | null = null
+    public readonly relay_to: string | null = null,
+    public userdata: any = null
   ) {}
 
   /**
@@ -56,7 +57,8 @@ export class SmtpServerMessageTarget {
     return new SmtpServerMessageTarget(
       SmtpServerMessageTargetType.Relay,
       address,
-      relay_to
+      relay_to,
+      null
     );
   }
 

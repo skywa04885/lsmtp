@@ -11,7 +11,7 @@
   },
   "name": "lsmtp",
   "types": "dist/index.d.ts",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Simple SMTP client / server",
   "main": "dist/index.js",
   "scripts": {
