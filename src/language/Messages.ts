@@ -103,7 +103,7 @@ export const Messages = {
   },
   mail: {
     _: (connection: SmtpServerConnection): string => {
-      return `OK ${connection.session.from} ${SUFFIX}`;
+      return `OK ${connection.session.from!.address} ${SUFFIX}`;
     },
     nested: (connection: SmtpServerConnection): string => {
       return `Rejected, nested ${SmtpCommandType.Mail} command. ${SUFFIX}`;
