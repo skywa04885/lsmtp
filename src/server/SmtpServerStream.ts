@@ -168,7 +168,7 @@ export class SmtpStream extends Writable {
       if (
         (segment = this._buffer.segment(
           DATA_END,
-          -2 /* -2, preserved '\r\n' */
+          0
         )) === null
       ) {
         break;
