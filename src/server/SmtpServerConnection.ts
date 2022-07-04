@@ -47,7 +47,9 @@ function __auth_plain_parse(base64: string): string[] {
 
   // Makes sure the first char is '\x00';
   if (!decoded.startsWith("\x00")) {
-    throw new SmtpInvalidCommandArguments("Does not start with null terminator.");
+    throw new SmtpInvalidCommandArguments(
+      "Does not start with null terminator."
+    );
   }
 
   // Removes the first char.
@@ -416,7 +418,11 @@ export class SmtpServerConnection extends EventEmitter {
     // We're done.
     const result: Error | null = await this.handle_mail();
     if (result !== null) {
-      // TODO: handle this.
+      // Performs the soft reset.
+      this.session.soft_reset();
+
+      // Throws the error.
+      throw result;
     }
 
     // Performs soft reset.
@@ -466,7 +472,11 @@ export class SmtpServerConnection extends EventEmitter {
       // We're done.
       const result: Error | null = await this.handle_mail();
       if (result !== null) {
-        // TODO: handle this.
+        // Performs the soft reset.
+        this.session.soft_reset();
+
+        // Throws the error.
+        throw result;
       }
 
       // Performs soft reset.
@@ -935,7 +945,8 @@ export class SmtpServerConnection extends EventEmitter {
 
     // Handles the from event, and checks if we're dealing with an error
     //  if so we will return the error.
-    const handlerResult: SmtpServerMessageFrom | Error = await this.server.config.callbacks.handle_mail_from(address, this);
+    const handlerResult: SmtpServerMessageFrom | Error =
+      await this.server.config.callbacks.handle_mail_from(address, this);
     if (handlerResult instanceof Error) {
       throw handlerResult;
     }
@@ -986,7 +997,8 @@ export class SmtpServerConnection extends EventEmitter {
     const address = __mail_rcpt_address_parse(args[0], "TO");
 
     // Handles the target, this will perform extra validation (if needed).
-    const target: SmtpServerMessageTarget | Error = await this.server.config.callbacks.handle_rcpt_to(address, this);
+    const target: SmtpServerMessageTarget | Error =
+      await this.server.config.callbacks.handle_rcpt_to(address, this);
     if (target instanceof Error) {
       throw target;
     }
