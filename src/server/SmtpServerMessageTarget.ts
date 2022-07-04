@@ -27,6 +27,20 @@ export class SmtpServerMessageTarget {
   ) {}
 
   /**
+   * Gets the username.
+   */
+  public get username(): string {
+    return this.address.split('@')[0]!;
+  }
+
+  /**
+   * Gets the domain.
+   */
+  public get domain(): string {
+    return this.address.split('@')[1]!;
+  }
+
+  /**
    * Decodes an address with relay target, for example '@asd.com:user@asd.com'
    * @param raw the raw address.
    * @returns the decoded address.
