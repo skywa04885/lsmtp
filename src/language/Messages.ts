@@ -66,6 +66,9 @@ export const Messages = {
     ): string => {
       return `Command ${command_type} is disabled. ${SUFFIX}`;
     },
+    rejected: (explaination: string, connection: SmtpServerConnection): string => {
+      return `Rejecting message, explaination: '${explaination}'`;
+    },
   },
   quit: {
     _: (connection: SmtpServerConnection): string => {

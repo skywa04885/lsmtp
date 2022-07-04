@@ -421,8 +421,17 @@ export class SmtpServerConnection extends EventEmitter {
       // Performs the soft reset.
       this.session.soft_reset();
 
-      // Throws the error.
-      throw result;
+      // Sends the response.
+      this.smtp_socket.write(
+        new SmtpResponse(
+          554,
+          Messages.general.rejected(result.message, this),
+          new SmtpEnhancedStatusCode(2, 0, 0)
+        ).encode(true)
+      );
+
+      // Returns.
+      return;
     }
 
     // Performs soft reset.
@@ -475,8 +484,17 @@ export class SmtpServerConnection extends EventEmitter {
         // Performs the soft reset.
         this.session.soft_reset();
 
-        // Throws the error.
-        throw result;
+        // Sends the response.
+        this.smtp_socket.write(
+          new SmtpResponse(
+            554,
+            Messages.general.rejected(result.message, this),
+            new SmtpEnhancedStatusCode(2, 0, 0)
+          ).encode(true)
+        );
+
+        // Returns.
+        return;
       }
 
       // Performs soft reset.
