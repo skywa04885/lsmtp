@@ -154,6 +154,13 @@ export class SmtpClientManager {
   protected _logger?: winston.Logger;
 
   /**
+   * Gets all the pools.
+   */
+  public get pools(): {[key: string]: SmtpClientPool} {
+    return this._map;
+  }
+
+  /**
    * Creates a new SmtpClientManager instance.
    * @param options the options.
    * @param logger the winston logger.

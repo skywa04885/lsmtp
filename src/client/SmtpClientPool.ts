@@ -33,6 +33,22 @@ export class SmtpClientPool extends EventEmitter {
   protected _nodes: LinkedList<SmtpClientCommander> =
     new LinkedList<SmtpClientCommander>();
 
+  public get exchanges(): SmtpMailExchanges {
+    return this._exchanges;
+  }
+
+  public get port(): number {
+    return this._port;
+  }
+
+  public get secure(): boolean {
+    return this._secure;
+  }
+
+  public get nodes(): LinkedList<SmtpClientCommander> {
+    return this._nodes;
+  }
+
   /**
    * Constructs a new SmtpClientPool with the given connect options.
    * @param exchanges the mail exchanges.

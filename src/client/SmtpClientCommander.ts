@@ -63,6 +63,26 @@ export class SmtpClientCommander extends EventEmitter {
   protected _active_assignment_errors?: SmtpClientAssignmentError[];
   protected _active_assignment_failed_recipients?: number;
 
+  public get serverDomain(): string {
+    return this._server_domain;
+  }
+
+  public get noopInterval(): number {
+    return this.noopInterval;
+  }
+
+  public get maxAssignments(): number {
+    return this._max_assignments;
+  }
+
+  public get totalExecuted(): number {
+    return this._total_executed;
+  }
+
+  public get totalEnqueued(): number {
+    return this._total_enqueued;
+  }
+
   /**
    * Constructs a new smtp client commander.
    * @param smtp_client the smtp client.
