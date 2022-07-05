@@ -3,9 +3,9 @@ import {
   SmtpClientAssignmentResult,
 } from "./SmtpCommanderAssignment";
 import { SmtpClientPool, SmtpClientPoolOptions } from "./SmtpClientPool";
-import { Logger } from "../helpers/Logger";
-import { LinkedList } from "../helpers/LinkedList";
+import { LinkedList } from "llibdatastructures";
 import { SmtpMailExchanges } from "../SmtpMailExchanges";
+import winston from "winston";
 
 export type SmtpClientManagerAssignmentCallback = (
   result: SmtpClientAssignmentResult[]
@@ -141,9 +141,8 @@ export class SmtpClientManagerAssignment {
 
 export interface SmtpClientManagerOptions {
   pool_options?: SmtpClientPoolOptions;
-  port?: 25;
+  port?: number;
   secure?: boolean;
-  debug?: boolean;
 }
 
 export class SmtpClientManager {
@@ -152,23 +151,18 @@ export class SmtpClientManager {
   protected _pool_options?: SmtpClientPoolOptions;
   protected _port: number;
   protected _secure: boolean;
-  protected _debug: boolean;
-
-  protected _logger?: Logger;
+  protected _logger?: winston.Logger;
 
   /**
    * Creates a new SmtpClientManager instance.
    * @param options the options.
+   * @param logger the winston logger.
    */
-  public constructor(options: SmtpClientManagerOptions = {}) {
+  public constructor(options: SmtpClientManagerOptions = {}, logger?: winston.Logger) {
     this._pool_options = options.pool_options;
     this._port = options.port ?? 25;
     this._secure = options.secure ?? false;
-    this._debug = options.debug ?? false;
-
-    if (this._debug) {
-      this._logger = new Logger("SmtpClientManager");
-    }
+    this._logger = logger;
   }
 
   /**
@@ -192,7 +186,8 @@ export class SmtpClientManager {
       mail_exchanges,
       this._port,
       this._secure,
-      this._pool_options
+      this._pool_options,
+      this._logger
     );
     this._map[domain] = pool;
 

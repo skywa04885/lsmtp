@@ -5,14 +5,13 @@ import { SmtpSocket } from "../shared/SmtpSocket";
 import { SmtpClientDNS } from "./SmtpClientDNS";
 import { SmtpClientStream } from "./SmtpClientStream";
 import { SmtpStream } from "../server/SmtpServerStream";
-import { Logger } from "../helpers/Logger";
+import winston from "winston";
 import {
   SmtpClientAssignmentError,
   SmtpClientAssignmentError_MailExchange,
 } from "./SmtpCommanderAssignment";
 
 export interface SmtpClientOptions {
-  debug?: boolean;
 }
 
 export declare interface SmtpClient {
@@ -32,22 +31,15 @@ export declare interface SmtpClient {
 }
 
 export class SmtpClient extends EventEmitter {
-  protected _debug: boolean;
-
   protected _smtp_socket: SmtpSocket;
   protected _smtp_stream: SmtpClientStream;
-  protected _logger?: Logger;
+  protected _logger?: winston.Logger;
 
-  public constructor(options: SmtpClientOptions = {}) {
+  public constructor(options: SmtpClientOptions = {}, logger?: winston.Logger) {
     super();
 
-    // Sets the options.
-    this._debug = options.debug ?? false;
-
-    // Creates the logger if needed.
-    if (this._debug) {
-      this._logger = new Logger("SmtpClient");
-    }
+    // Sets the logger.
+    this._logger = logger;
 
     // Creates the instance variables.
     this._smtp_socket = new SmtpSocket(false);
@@ -193,13 +185,7 @@ export class SmtpClient extends EventEmitter {
    * Gets called when we've connected.
    */
   protected _handle_connect() {
-    if (this._debug) {
-      this._logger!.trace("Connect event triggered.");
-    }
-
-    if (this._logger) {
-      this._logger = new Logger(`SmtpClient:${this._smtp_socket.address}`);
-    }
+    this._logger?.debug("Connect event triggered.");
 
     this.emit("connect");
   }
@@ -208,9 +194,7 @@ export class SmtpClient extends EventEmitter {
    * Gets called when we've upgraded the connection.
    */
   protected _handle_upgrade() {
-    if (this._debug) {
-      this._logger!.trace("Upgrade event triggered.");
-    }
+    this._logger?.debug("Upgrade event triggered.");
 
     this.emit("upgrade");
   }
@@ -219,9 +203,7 @@ export class SmtpClient extends EventEmitter {
    * Gets called when we've closed the connection.
    */
   protected _handle_close() {
-    if (this._debug) {
-      this._logger!.trace("Close event triggered.");
-    }
+    this._logger?.debug("Close event triggered.");
 
     this.emit("close");
   }

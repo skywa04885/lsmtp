@@ -1,4 +1,4 @@
-import { Flags } from "../helpers/Flags";
+import { Flags } from "llibdatastructures";
 import { SmtpServerFeatureFlag } from "../server/SmtpServerConfig";
 import { SmtpCapability, SmtpCapabilityType } from "../shared/SmtpCapability";
 import {

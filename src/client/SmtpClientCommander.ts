@@ -3,8 +3,7 @@
 */
 
 import EventEmitter from "events";
-import { Flags } from "../helpers/Flags";
-import { Logger } from "../helpers/Logger";
+import { Flags } from "llibdatastructures";
 import { SmtpCapability } from "../shared/SmtpCapability";
 import { SmtpResponse } from "../shared/SmtpResponse";
 import { SmtpClient } from "./SmtpClient";
@@ -21,9 +20,10 @@ import {
   SmtpClientAssignmentError_ResponseError,
   SmtpClientAssignmentError_SocketError,
 } from "./SmtpCommanderAssignment";
-import { Queue } from "../helpers/Queue";
+import { Queue } from "llibdatastructures";
 import { DotEscapeEncodeStream } from "llibencoding";
 import { Readable } from "stream";
+import winston from "winston";
 
 export enum SmtpCommanderFlag {
   IS_ESMTP = 1 << 0, // The server is an ESMTP server.
@@ -41,19 +41,17 @@ export declare interface SmtpClientCommander {
 
 export interface SmtpClientCommanderOptions {
   server_domain?: string;
-  debug?: boolean;
   noop_interval?: number;
   max_assignments?: number;
 }
 
 export class SmtpClientCommander extends EventEmitter {
   protected _server_domain: string;
-  protected _debug: boolean;
   protected _noop_interval: number;
   protected _max_assignments: number;
 
   protected _smtp_client: SmtpClient;
-  protected _logger?: Logger;
+  protected _logger?: winston.Logger;
   protected _flags: Flags;
   protected _server_opts?: SmtpCommanderServerOpts;
   protected _timer_ref?: NodeJS.Timeout;
@@ -72,21 +70,19 @@ export class SmtpClientCommander extends EventEmitter {
    */
   public constructor(
     smtp_client: SmtpClient,
-    options: SmtpClientCommanderOptions = {}
+    options: SmtpClientCommanderOptions = {},
+    logger?: winston.Logger
   ) {
     super();
 
     // Sets the options.
     this._server_domain = options.server_domain ?? "unset.local";
-    this._debug = options.debug ?? false;
     this._noop_interval = options.noop_interval ?? 5000;
     this._max_assignments = options.max_assignments ?? 100;
 
-    // Creates the logger if debugging enabled.
-    if (this._debug) {
-      this._logger = new Logger("SmtpClientCommander");
-    }
-
+    // Sets the logger.
+    this._logger = logger;
+    
     // Assigns the SMTP client.
     this._smtp_client = smtp_client;
 
@@ -107,7 +103,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @param assignment the assignment.
    */
   public assign(assignment: SmtpClientCommanderAssignment) {
-    this._logger?.trace(
+    this._logger?.debug(
       `Got new assignment, from: ${assignment.from}, to: ${assignment.to.join(
         ", "
       )}.`
@@ -128,7 +124,7 @@ export class SmtpClientCommander extends EventEmitter {
       this._timer_ref = undefined;
 
       // Performs the debug log.
-      this._logger?.trace(
+      this._logger?.debug(
         `Immediately executing enqueued assignment because the client is IDLE now.`
       );
 
@@ -236,7 +232,7 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_noop(response: SmtpResponse): void {
     // Logs that we've received the ACK.
-    this._logger?.trace(`Received NOOP response, setting timeout again ..`);
+    this._logger?.debug(`Received NOOP response, setting timeout again ..`);
 
     // Checks if the status is okay, if not quit.
     if (response.status !== 250) {
@@ -255,7 +251,7 @@ export class SmtpClientCommander extends EventEmitter {
   protected _set_noop_timeout(): void {
     this._timer_ref = setTimeout(() => {
       // Logs that we're sending the NOOP
-      this._logger?.trace(`Sent NOOP, awaiting response ...`);
+      this._logger?.debug(`Sent NOOP, awaiting response ...`);
 
       // Sends the NOOP and adds the event listener.
       this._smtp_client.cmd_noop();
@@ -281,7 +277,7 @@ export class SmtpClientCommander extends EventEmitter {
     this._flags.clear(SmtpCommanderFlag.EXECUTING);
 
     // Dequeues the assignment.
-    this._logger?.trace(`Transmission complete, dequeue assignment ...`);
+    this._logger?.debug(`Transmission complete, dequeue assignment ...`);
     this._assignment_queue.dequeue();
   }
 
@@ -305,7 +301,7 @@ export class SmtpClientCommander extends EventEmitter {
 
       // If we've executed the max number of assignments, close.
       if (++this._total_executed >= this._max_assignments) {
-        this._logger?.trace(`Executed max number of assignments, closing ...`);
+        this._logger?.debug(`Executed max number of assignments, closing ...`);
         this._smtp_client.smtp_socket.close();
         return;
       }
@@ -315,7 +311,7 @@ export class SmtpClientCommander extends EventEmitter {
     //  start the transmission of the next assignment.
     if (this._assignment_queue.empty) {
       // Logs that we're entering IDLE mode, if in debug.
-      this._logger?.trace(
+      this._logger?.debug(
         `Assignment queue is empty, entering IDLE mode with NOOP interval of ${this._noop_interval}ms`
       );
 
@@ -362,7 +358,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_send_rset(assignment: SmtpClientCommanderAssignment) {
-    this._logger?.trace(`Sending RSET command to reset session ...`);
+    this._logger?.debug(`Sending RSET command to reset session ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._transaction_handle_rset_response(assignment, response)
@@ -380,7 +376,7 @@ export class SmtpClientCommander extends EventEmitter {
     assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ) {
-    this._logger?.trace(`Received RSET Response, beginning transaction ...`);
+    this._logger?.debug(`Received RSET Response, beginning transaction ...`);
 
     // Makes sure that the status is valid.
     if (response.status !== 250) {
@@ -403,7 +399,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_send_from(assignment: SmtpClientCommanderAssignment) {
-    this._logger?.trace(`Sending mail from command ...`);
+    this._logger?.debug(`Sending mail from command ...`);
 
     // Sets the response listener.
     this._smtp_client.once("response", (response: SmtpResponse) =>
@@ -424,7 +420,7 @@ export class SmtpClientCommander extends EventEmitter {
     assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
-    this._logger?.trace(
+    this._logger?.debug(
       `Received mail from response, starting with RCPT to ...`
     );
 
@@ -455,7 +451,7 @@ export class SmtpClientCommander extends EventEmitter {
     assignment: SmtpClientCommanderAssignment,
     index: number = 0
   ): void {
-    this._logger?.trace(
+    this._logger?.debug(
       `Sending recipient (${index}): ${assignment.to[index]}`
     );
 
@@ -477,7 +473,7 @@ export class SmtpClientCommander extends EventEmitter {
     response: SmtpResponse,
     index: number
   ): void {
-    this._logger?.trace(
+    this._logger?.debug(
       `Received recipient response (${index}): ${assignment.to[index]}`
     );
 
@@ -524,7 +520,7 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_send_data(assignment: SmtpClientCommanderAssignment): void {
-    this._logger?.trace(`Sending data command ...`);
+    this._logger?.debug(`Sending data command ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
       this._transaction_handle_data_response(assignment, response)
@@ -542,7 +538,7 @@ export class SmtpClientCommander extends EventEmitter {
     assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
-    this._logger?.trace(
+    this._logger?.debug(
       "Received data command, started streaming out data ..."
     );
 
@@ -590,7 +586,7 @@ export class SmtpClientCommander extends EventEmitter {
     assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
-    this._logger?.trace("Received data complete response.");
+    this._logger?.debug("Received data complete response.");
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
@@ -617,7 +613,7 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_starttls_upgrade() {
     // Logs that we've upgraded the connection.
-    this._logger?.trace("Connection is now upgraded, sending new EHLO ...");
+    this._logger?.debug("Connection is now upgraded, sending new EHLO ...");
 
     // Writes the HELO command, to receive the new capabilities.
     this._smtp_client.once("response", (response: SmtpResponse) =>
@@ -631,10 +627,10 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_starttls_response(response: SmtpResponse) {
     // Logs that we've received the STARTTLS response.
-    this._logger?.trace("STARTTLS Response received, upgrading connection ...");
+    this._logger?.debug("STARTTLS Response received, upgrading connection ...");
 
     // If the status code is invalid, just give up the transaction.
-    if (response.status !== 200) {
+    if (response.status !== 220) {
       this._give_up_transaction(
         new SmtpClientAssignmentError_ResponseError(
           response,
@@ -655,7 +651,7 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_ehlo_response(response: SmtpResponse) {
     // Logs that we've received the EHLO, if debug enabled.
-    this._logger?.trace("Received EHLO, checking capabilities ...");
+    this._logger?.debug("Received EHLO, checking capabilities ...");
 
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
@@ -677,7 +673,7 @@ export class SmtpClientCommander extends EventEmitter {
     // Derives the server options from the capabilities, and logs
     //  them to the console if debug enabled.
     this._server_opts = smtp_client_server_opts_from_capabilities(capabilities);
-    this._logger?.trace(
+    this._logger?.debug(
       `Detected server size: ${
         this._server_opts.max_message_size
       }, with detected features: ${smtp_commander_server_opts_flags_string(
@@ -690,7 +686,7 @@ export class SmtpClientCommander extends EventEmitter {
       !this._smtp_client.smtp_socket.secure &&
       this._server_opts.features.are_set(SmtpCommanderServerFeatures.StartTLS)
     ) {
-      this._logger?.trace("Server supports STARTTLS Upgrading ...");
+      this._logger?.debug("Server supports STARTTLS Upgrading ...");
 
       this._smtp_client.once("response", (response: SmtpResponse) =>
         this._handle_starttls_response(response)
@@ -711,7 +707,7 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_helo_response(response: SmtpResponse) {
     // Logs that we've received the HELO, if debug enabled.
-    this._logger?.trace(
+    this._logger?.debug(
       "Received HELO (LMFAO this server sucks so fucking hard, just support ESMTP ;P)."
     );
 
@@ -737,7 +733,7 @@ export class SmtpClientCommander extends EventEmitter {
    */
   protected _handle_greeting(response: SmtpResponse) {
     // Logs that we've received the greeting, if debug enabled.
-    this._logger?.trace(
+    this._logger?.debug(
       `Received greeting with message: '${response.message_string}'`
     );
 
@@ -765,14 +761,14 @@ export class SmtpClientCommander extends EventEmitter {
     // Writes the HELO or EHLO message depending on the type of server, and sets the listener
     //  for the response.
     if (this._flags.are_set(SmtpCommanderFlag.IS_ESMTP)) {
-      this._logger?.trace("Server supports ESMTP, sending EHLO ...");
+      this._logger?.debug("Server supports ESMTP, sending EHLO ...");
 
       this._smtp_client.once("response", (response: SmtpResponse) =>
         this._handle_ehlo_response(response)
       );
       this._smtp_client.cmd_ehlo(this._server_domain);
     } else if (this._flags.are_set(SmtpCommanderFlag.IS_SMTP)) {
-      this._logger?.trace("Server supports SMTP only, sending HELO ...");
+      this._logger?.debug("Server supports SMTP only, sending HELO ...");
 
       this._smtp_client.once("response", (response: SmtpResponse) =>
         this._handle_helo_response(response)

@@ -1,6 +1,5 @@
 import { EventEmitter } from "events";
-import { LinkedList } from "../helpers/LinkedList";
-import { Logger } from "../helpers/Logger";
+import { LinkedList } from "llibdatastructures";
 import { SmtpClientCommanderAssignment } from "./SmtpCommanderAssignment";
 import {
   SmtpClientCommander,
@@ -9,11 +8,11 @@ import {
 import { SmtpClient, SmtpClientOptions } from "./SmtpClient";
 import { SmtpMailExchanges } from "../SmtpMailExchanges";
 import { MxRecord } from "dns";
+import winston from "winston";
 
 export interface SmtpClientPoolOptions {
   client_options?: SmtpClientOptions;
   commander_options?: SmtpClientCommanderOptions;
-  debug?: boolean; // If debug mode enabled.
 }
 
 export declare interface SmtpClientPool {
@@ -29,8 +28,7 @@ export class SmtpClientPool extends EventEmitter {
 
   protected _client_options?: SmtpClientOptions;
   protected _commander_options?: SmtpClientCommanderOptions;
-  protected _debug: boolean;
-  protected _logger?: Logger;
+  protected _logger?: winston.Logger;
 
   protected _nodes: LinkedList<SmtpClientCommander> =
     new LinkedList<SmtpClientCommander>();
@@ -46,7 +44,8 @@ export class SmtpClientPool extends EventEmitter {
     exchanges: SmtpMailExchanges,
     port: number,
     secure: boolean = false,
-    options: SmtpClientPoolOptions = {}
+    options: SmtpClientPoolOptions = {},
+    logger?: winston.Logger
   ) {
     super();
 
@@ -58,15 +57,10 @@ export class SmtpClientPool extends EventEmitter {
     // Sets the options.
     this._client_options = options.client_options;
     this._commander_options = options.commander_options;
-    this._debug = options.debug ?? false;
-
-    // Creates the logger.
-    if (this._debug) {
-      this._logger = new Logger(`SmtpClientPool(${this._exchanges.hostname})`);
-    }
+    this._logger = logger;
 
     // Logs the base.
-    this._logger?.trace(
+    this._logger?.debug(
       `Client pool created for ${this._secure ? "TLS" : "PLAIN"} ${
         this._exchanges.hostname
       }:${this._port}`
@@ -88,7 +82,7 @@ export class SmtpClientPool extends EventEmitter {
     }
 
     // Enqueue all the remaining assignments to different commanders.
-    this._logger?.trace(
+    this._logger?.debug(
       `Transferring unhandled assignments to new clients ...`
     );
     while (!commander.assignment_queue.empty) {
@@ -102,7 +96,7 @@ export class SmtpClientPool extends EventEmitter {
    */
   public assign(assignment: SmtpClientCommanderAssignment): void {
     // Logs the message indicating where the assignment is going towards.
-    this._logger?.trace(
+    this._logger?.debug(
       `We've received a new assignment to: (${assignment.to.join(", ")})`
     );
 
@@ -116,18 +110,19 @@ export class SmtpClientPool extends EventEmitter {
     // Since there is no space or no current commander available, we create
     //  a new one, first we'll get the exchange.
     const exchange: MxRecord = this._exchanges.exchange;
-    this._logger?.trace(
+    this._logger?.debug(
       `Creating new commander for exchange '${exchange.exchange}' with priority ${exchange.priority}`
     );
 
     // Creates the client and gives it the options the callee has specified.
-    const client: SmtpClient = new SmtpClient(this._client_options);
+    const client: SmtpClient = new SmtpClient(this._client_options, this._logger);
 
     // Creates the commander for the client, and give it the callee specified
     //  options, since we don't have any ourselves.
     const commander: SmtpClientCommander = new SmtpClientCommander(
       client,
-      this._commander_options
+      this._commander_options,
+      this._logger
     );
 
     // Pushes the assignment to the commander, and inserts the commander
