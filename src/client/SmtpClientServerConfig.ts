@@ -73,11 +73,15 @@ export function smtp_client_server_opts_from_capabilities(
         break;
       case SmtpCapabilityType.Size: {
         const args: string[] = capability.args as string[];
-        if (args.length !== 1) {
+        if (args.length === 0) {
+          result.max_message_size = Infinity;
+        } else if (args.length === 1) {
+          result.max_message_size = parseInt(args[0]);
+        } else {
           throw new Error("Invalid SIZE capability.");
-        }
 
-        result.max_message_size = parseInt(args[0]);
+        }
+        
         break;
       }
       default:
