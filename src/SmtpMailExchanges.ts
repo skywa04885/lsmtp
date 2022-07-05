@@ -17,6 +17,13 @@ export class SmtpMailExchanges {
   }
 
   /**
+   * Gets all the exchanges.
+   */
+  public get exchanges(): dns.MxRecord[] {
+    return this._exchanges;
+  }
+
+  /**
    * Gets the hostname.
    */
   public get hostname(): string {
