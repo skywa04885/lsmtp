@@ -19,7 +19,15 @@ export enum SmtpServerSessionFlag {
   BinaryDataTransferLast = 1 << 8, // Indicates if this is the last binary data transfer.
 }
 
+export enum SmtpServerSessionType {
+  SMTP = 'SMTP',
+  SMTPS = 'SMTPS',
+  ESMTP = 'ESMTP',
+  ESMTPS = 'ESMTPS',
+}
+
 export class SmtpServerSession {
+  public type: SmtpServerSessionType | null = null;
   public invalid_command_count: number = 0;
   public remote_domain: string | null = null;
   public from: SmtpServerMessageFrom | null = null;

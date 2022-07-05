@@ -29,7 +29,7 @@ import {
   SmtpServerMessageTarget,
   SmtpServerMessageTargetType,
 } from "./SmtpServerMessageTarget";
-import { SmtpServerSession, SmtpServerSessionFlag } from "./SmtpServerSession";
+import { SmtpServerSession, SmtpServerSessionFlag, SmtpServerSessionType } from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
 
 export const enum SmtpServerConnectionLineIdentifier {
@@ -847,6 +847,11 @@ export class SmtpServerConnection extends EventEmitter {
       return;
     }
 
+    // Checks if the session already has an type set, if not set it.
+    if (this.session.type === null) {
+      this.session.type = this.smtp_socket.secure ? SmtpServerSessionType.SMTPS : SmtpServerSessionType.SMTP;
+    }
+
     // Resets the state.
     this.session.hard_reset();
 
@@ -891,6 +896,11 @@ export class SmtpServerConnection extends EventEmitter {
       );
       this.smtp_socket.close();
       return;
+    }
+
+    // Checks if the session already has an type set, if not set it.
+    if (this.session.type === null) {
+      this.session.type = this.smtp_socket.secure ? SmtpServerSessionType.ESMTPS : SmtpServerSessionType.ESMTP;
     }
 
     // Resets the state.

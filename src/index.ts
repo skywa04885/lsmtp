@@ -19,6 +19,7 @@ import {
 import {
   SmtpServerSession,
   SmtpServerSessionFlag,
+  SmtpServerSessionType
 } from "./server/SmtpServerSession";
 import { SmtpStream } from "./server/SmtpServerStream";
 import { SmtpAuthType } from "./shared/SmtpAuth";
@@ -69,8 +70,9 @@ export {
   SmtpMailExchanges,
   SmtpServerMessageFrom,
   SmtpServerMessageFromType,
-  SmtpPolicyError as PolicyError,
-  SmtpSyntaxError as SyntaxError,
-  SmtpBadSequenceError as BadSequenceError,
-  SmtpInvalidCommandError as InvalidCommandError,
+  SmtpServerSessionType,
+  SmtpPolicyError,
+  SmtpSyntaxError,
+  SmtpBadSequenceError,
+  SmtpInvalidCommandError,
 };
