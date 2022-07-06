@@ -8,7 +8,7 @@ import { SmtpStream } from "../server/SmtpServerStream";
 import winston from "winston";
 import {
   SmtpClientAssignmentError,
-  SmtpClientAssignmentError_MailExchange,
+  SmtpClientAssignmentMailExchangeError,
 } from "./SmtpCommanderAssignment";
 
 export interface SmtpClientOptions {

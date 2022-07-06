@@ -4,21 +4,21 @@ import { SmtpResponse } from "../shared/SmtpResponse";
 
 export class SmtpClientAssignmentError extends Error {}
 
-export class SmtpClientAssignmentError_MailExchange extends SmtpClientAssignmentError {
+export class SmtpClientAssignmentMailExchangeError extends SmtpClientAssignmentError {
   public constructor(public exchanges: string[], message?: string) {
     super(message);
   }
 }
 
-export class SmtpClientAssignmentError_SocketError extends SmtpClientAssignmentError {}
+export class SmtpClientAssignmentNetworkingError extends SmtpClientAssignmentError {}
 
-export class SmtpClientAssignmentError_ResponseError extends SmtpClientAssignmentError {
+export class SmtpClientAssignmentTransactionError extends SmtpClientAssignmentError {
   public constructor(public response: SmtpResponse, message?: string) {
     super(message);
   }
 }
 
-export class SmtpClientAssignmentError_RecipientError extends SmtpClientAssignmentError {
+export class SmtpClientAssignmentErrorRecipientError extends SmtpClientAssignmentError {
   public constructor(
     public recipient: string,
     public response: SmtpResponse,

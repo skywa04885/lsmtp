@@ -7,9 +7,7 @@ import { LinkedList } from "llibdatastructures";
 import { SmtpMailExchanges } from "../SmtpMailExchanges";
 import winston from "winston";
 
-export type SmtpClientManagerAssignmentCallback = (
-  result: SmtpClientAssignmentResult[]
-) => void;
+export type SmtpClientManagerAssignmentCallback = () => void;
 
 export class SmtpClientManagerAssignment {
   protected _assignments_in_progress: LinkedList<SmtpClientCommanderAssignment> =
@@ -111,7 +109,7 @@ export class SmtpClientManagerAssignment {
     }
 
     // The assignment is completed, call the callback.
-    this.callback(this.results);
+    this.callback();
   }
 
   /**
@@ -135,7 +133,7 @@ export class SmtpClientManagerAssignment {
     }
 
     // The assignment is completed, call the callback.
-    this.callback(this.results);
+    this.callback();
   }
 }
 

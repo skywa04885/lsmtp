@@ -16,9 +16,9 @@ import {
 import {
   SmtpClientCommanderAssignment,
   SmtpClientAssignmentError,
-  SmtpClientAssignmentError_RecipientError,
-  SmtpClientAssignmentError_ResponseError,
-  SmtpClientAssignmentError_SocketError,
+  SmtpClientAssignmentErrorRecipientError,
+  SmtpClientAssignmentTransactionError,
+  SmtpClientAssignmentNetworkingError,
 } from "./SmtpCommanderAssignment";
 import { Queue } from "llibdatastructures";
 import { DotEscapeEncodeStream } from "llibencoding";
@@ -213,7 +213,7 @@ export class SmtpClientCommander extends EventEmitter {
       // Pushes the error onto the errors array, and finishes
       //  the transaction.
       this._active_assignment_errors!.push(
-        new SmtpClientAssignmentError_SocketError(
+        new SmtpClientAssignmentNetworkingError(
           `An error occured during the transmission: ${error.name} - ${error.message}`
         )
       );
@@ -235,7 +235,7 @@ export class SmtpClientCommander extends EventEmitter {
       // Pushes the error onto the errors array, and finishes
       //  the transaction.
       this._active_assignment_errors!.push(
-        new SmtpClientAssignmentError_SocketError(
+        new SmtpClientAssignmentNetworkingError(
           "Socket closed during transaction."
         )
       );
@@ -401,9 +401,9 @@ export class SmtpClientCommander extends EventEmitter {
     // Makes sure that the status is valid.
     if (response.status !== 250) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
-          "Status code did not match desired code: 250"
+          "Status code did not match desired code: 250",
         )
       );
       return;
@@ -447,7 +447,7 @@ export class SmtpClientCommander extends EventEmitter {
     // Makes sure that the status is valid.
     if (response.status !== 250) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Status code did not match desired code: 250"
         )
@@ -505,7 +505,7 @@ export class SmtpClientCommander extends EventEmitter {
 
       // Pushes the error.
       const error: SmtpClientAssignmentError =
-        new SmtpClientAssignmentError_RecipientError(
+        new SmtpClientAssignmentErrorRecipientError(
           assignment.to[index],
           response,
           "Response code did not match desired code: 250"
@@ -566,7 +566,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 354) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 354"
         )
@@ -611,7 +611,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 250"
         )
@@ -652,7 +652,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 220) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 220"
         )
@@ -676,7 +676,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 250"
         )
@@ -734,7 +734,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 250) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 250"
         )
@@ -760,7 +760,7 @@ export class SmtpClientCommander extends EventEmitter {
     // If the status code is invalid, just give up the transaction.
     if (response.status !== 220) {
       this._give_up_transaction(
-        new SmtpClientAssignmentError_ResponseError(
+        new SmtpClientAssignmentTransactionError(
           response,
           "Response code did not match desired code: 220"
         )
