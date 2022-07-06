@@ -1,8 +1,9 @@
-import { SmtpPolicyError } from "../shared/SmtpError";
+import {SmtpPolicyError} from "../shared/SmtpError";
 import {
   SMTP_EMAIL_REGEX,
   SMTP_RELAY_TARGET_REGEX,
 } from "../shared/SmtpRegexes";
+import {EmailAddress} from "llibemailaddress";
 
 export enum SmtpServerMessageTargetType {
   Local = "LOCAL", // If it will be stored locally, the user is local.
@@ -16,28 +17,30 @@ export class SmtpServerMessageTarget {
   /**
    * COnstructs a new SmtpServerMessageTarget.
    * @param type the type of target.
-   * @param address the address of target.
+   * @param email the E-Mail address of the target.
    * @param relay_to the possible relay host.
+   * @param userdata the user data.
    */
   public constructor(
     public type: SmtpServerMessageTargetType,
-    public readonly address: string,
+    public readonly email: EmailAddress,
     public readonly relay_to: string | null = null,
     public userdata: any = null
-  ) {}
+  ) {
+  }
 
   /**
    * Gets the username.
    */
   public get username(): string {
-    return this.address.split('@')[0]!;
+    return this.email.username;
   }
 
   /**
-   * Gets the domain.
+   * Gets the hostname.
    */
-  public get domain(): string {
-    return this.address.split('@')[1]!;
+  public get hostname(): string {
+    return this.email.hostname;
   }
 
   /**
@@ -63,14 +66,24 @@ export class SmtpServerMessageTarget {
     // Validates the relay to and the address.
     if (!relay_to.match(SMTP_RELAY_TARGET_REGEX)) {
       throw new SyntaxError("Invalid relay target.");
-    } else if (!address.match(SMTP_EMAIL_REGEX)) {
-      throw new SyntaxError("Invalid address.");
+    }
+
+    // Parses the E-Mail address.
+    let email: EmailAddress;
+    try {
+      email = EmailAddress.fromAddress(address);
+    } catch (e) {
+      if (e instanceof Error) {
+        throw new SyntaxError(e.message);
+      }
+
+      throw e;
     }
 
     // Returns the target.
     return new SmtpServerMessageTarget(
       SmtpServerMessageTargetType.Relay,
-      address,
+      email,
       relay_to,
       null
     );
@@ -89,15 +102,22 @@ export class SmtpServerMessageTarget {
     if (!raw.includes(",")) {
       // Checks if we have an ':' if so there still might be an relay target.
       if (!raw.includes(":")) {
-        // Checks if it matches the email regexp.
-        if (!raw.match(SMTP_EMAIL_REGEX)) {
-          throw new SyntaxError(`Address '${raw}' is not valid.`);
+        // Parses the E-Mail address.
+        let email: EmailAddress;
+        try {
+          email = EmailAddress.fromAddress(raw);
+        } catch (e) {
+          if (e instanceof Error) {
+            throw new SyntaxError(e.message);
+          }
+
+          throw e;
         }
 
         // Returns the mailbox.
         return new SmtpServerMessageTarget(
           SmtpServerMessageTargetType.Local,
-          raw
+          email
         );
       }
 
@@ -122,14 +142,24 @@ export class SmtpServerMessageTarget {
     // Makes sure the address and relay target are valid.
     if (!relay_to.match(SMTP_RELAY_TARGET_REGEX)) {
       throw new SyntaxError("Invalid relay target.");
-    } else if (!address.match(SMTP_EMAIL_REGEX)) {
-      throw new SyntaxError("Invalid address.");
+    }
+
+    // Parses the E-Mail address.
+    let email: EmailAddress;
+    try {
+      email = EmailAddress.fromAddress(address);
+    } catch (e) {
+      if (e instanceof Error) {
+        throw new SyntaxError(e.message);
+      }
+
+      throw e;
     }
 
     // Returns the result.
     return new SmtpServerMessageTarget(
       SmtpServerMessageTargetType.Relay,
-      address,
+      email,
       relay_to
     );
   }

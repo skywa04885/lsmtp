@@ -1037,7 +1037,7 @@ export class SmtpServerConnection extends EventEmitter {
       this.smtp_socket.write(
         new SmtpResponse(
           501,
-          Messages.rcpt.already_recipient(target.address, this),
+          Messages.rcpt.already_recipient(target.email, this),
           new SmtpEnhancedStatusCode(5, 1, 0)
         ).encode(true)
       );

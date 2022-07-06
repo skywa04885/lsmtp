@@ -1,7 +1,6 @@
 import { SmtpServer } from "./server/SmtpServer";
 import { SmtpClient } from "./client/SmtpClient";
 import { SmtpClientCommander } from "./client/SmtpClientCommander";
-import { SmtpClientDNS } from "./client/SmtpClientDNS";
 import { SmtpClientError } from "./client/SmtpClientError";
 import {
   SmtpClientManager,
@@ -19,7 +18,7 @@ import {
 import {
   SmtpServerSession,
   SmtpServerSessionFlag,
-  SmtpServerSessionType
+  SmtpServerSessionType,
 } from "./server/SmtpServerSession";
 import { SmtpStream } from "./server/SmtpServerStream";
 import { SmtpAuthType } from "./shared/SmtpAuth";
@@ -40,11 +39,23 @@ import {
   SmtpBadSequenceError,
   SmtpInvalidCommandError,
 } from "./shared/SmtpError";
+import {
+  SmtpClientCommanderAssignmentState,
+  SmtpClientCommanderStreamAssignment,
+  SmtpClientCommanderBufferAssignment,
+  SmtpClientCommanderAssignment,
+} from "./client/SmtpClientCommanderAssignment";
+import {
+  SmtpClientCommanderError,
+  SmtpClientCommanderTransactionError,
+  SmtpClientCommanderNetworkingError,
+  SmtpClientCommanderErrors,
+  SmtpClientCommanderNetworkingErrorOrigin,
+} from "./client/SmtpClientCommanderErrors";
 
 export {
   SmtpClient,
   SmtpClientCommander,
-  SmtpClientDNS,
   SmtpClientError,
   SmtpClientManagerAssignment,
   SmtpClientManager,
@@ -75,4 +86,13 @@ export {
   SmtpSyntaxError,
   SmtpBadSequenceError,
   SmtpInvalidCommandError,
+  SmtpClientCommanderAssignmentState,
+  SmtpClientCommanderStreamAssignment,
+  SmtpClientCommanderBufferAssignment,
+  SmtpClientCommanderAssignment,
+  SmtpClientCommanderError,
+  SmtpClientCommanderTransactionError,
+  SmtpClientCommanderNetworkingError,
+  SmtpClientCommanderErrors,
+  SmtpClientCommanderNetworkingErrorOrigin,
 };

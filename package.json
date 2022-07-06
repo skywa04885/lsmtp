@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "llibdatastructures": "^1.0.0",
+    "llibemailaddress": "^1.0.1",
     "llibencoding": "^1.0.6",
     "llibmime": "^1.0.1",
     "lxoauth2": "^1.0.4",
@@ -13,7 +14,7 @@
   },
   "name": "lsmtp",
   "types": "dist/index.d.ts",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Simple SMTP client / server",
   "main": "dist/index.js",
   "scripts": {

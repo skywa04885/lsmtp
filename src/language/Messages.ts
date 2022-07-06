@@ -2,6 +2,7 @@ import { SmtpServerConnection } from "../server/SmtpServerConnection";
 import { SmtpCommandType } from "../shared/SmtpCommand";
 import { HOSTNAME, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
+import {EmailAddress} from "llibemailaddress";
 
 export const SUFFIX = `${HOSTNAME} - lsmtp`;
 
@@ -106,7 +107,7 @@ export const Messages = {
   },
   mail: {
     _: (connection: SmtpServerConnection): string => {
-      return `OK ${connection.session.from!.address} ${SUFFIX}`;
+      return `OK ${connection.session.from!.email.address} ${SUFFIX}`;
     },
     nested: (connection: SmtpServerConnection): string => {
       return `Rejected, nested ${SmtpCommandType.Mail} command. ${SUFFIX}`;
@@ -142,7 +143,7 @@ export const Messages = {
       }
 
       return `OK ${
-        connection.session.to[connection.session.to.length - 1].address
+        connection.session.to[connection.session.to.length - 1].email.address
       } ${SUFFIX}`;
     },
     may_not_be_empty: (connection: SmtpServerConnection): string => {
@@ -152,10 +153,10 @@ export const Messages = {
       return `Rejected. ${SUFFIX}`;
     },
     already_recipient: (
-      email: string,
+      email: EmailAddress,
       connection: SmtpServerConnection
     ): string => {
-      return `Rejected, ${email} is already an recipient. ${SUFFIX}`;
+      return `Rejected, ${email.address} is already an recipient. ${SUFFIX}`;
     },
   },
   ehlo: {

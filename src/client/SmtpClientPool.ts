@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { LinkedList } from "llibdatastructures";
-import { SmtpClientCommanderAssignment } from "./SmtpCommanderAssignment";
+import { SmtpClientCommanderAssignment } from "./SmtpClientCommanderAssignment";
 import {
   SmtpClientCommander,
   SmtpClientCommanderOptions,
@@ -93,7 +93,7 @@ export class SmtpClientPool extends EventEmitter {
     this._nodes.remove(commander);
 
     // Checks if there are assignments left in the queue, if not return.
-    if (commander.assignment_queue.empty) {
+    if (commander.assignmentQueue.empty) {
       return;
     }
 
@@ -101,8 +101,8 @@ export class SmtpClientPool extends EventEmitter {
     this._logger?.debug(
       `Transferring unhandled assignments to new clients ...`
     );
-    while (!commander.assignment_queue.empty) {
-      this.assign(commander.assignment_queue.dequeue());
+    while (!commander.assignmentQueue.empty) {
+      this.assign(commander.assignmentQueue.dequeue());
     }
   }
 

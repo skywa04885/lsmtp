@@ -1,3 +1,5 @@
+import {EmailAddress} from "llibemailaddress";
+
 export enum SmtpServerMessageFromType {
   Remote = 'REMOTE',
   Local = 'LOCAL',
@@ -7,24 +9,24 @@ export class SmtpServerMessageFrom {
   /**
    * Constructs a new from address.
    * @param type the type.
-   * @param address the address.
+   * @param email the E-Mail address.
    */
   public constructor(
     public readonly type: SmtpServerMessageFromType,
-    public readonly address: string
+    public readonly email: EmailAddress
   ) {}
 
   /**
    * Gets the username.
    */
   public get username(): string {
-    return this.address.split('@')[0]!;
+    return this.email.username;
   }
 
   /**
-   * Gets the domain.
+   * Gets the hostname.
    */
-  public get domain(): string {
-    return this.address.split('@')[1]!;
+  public get hostname(): string {
+    return this.email.hostname;
   }
 }

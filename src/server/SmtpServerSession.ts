@@ -1,7 +1,5 @@
-import { LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpSessionState } from "../shared/SmtpSession";
 import { SmtpUser } from "../shared/SmtpUser";
-import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
 import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 
@@ -52,7 +50,7 @@ export class SmtpServerSession {
 
     return (
       this.to.filter((tt: SmtpServerMessageTarget): boolean => {
-        return t.address === tt.address;
+        return t.hostname === tt.hostname && t.username === tt.username;
       }).length !== 0
     );
   }
