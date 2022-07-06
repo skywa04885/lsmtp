@@ -132,6 +132,7 @@ export class SmtpClientManagerAssignment {
     // Pushes the result.
     this._results.push({
       errors: [error],
+      to: assignment.to
     });
 
     // Checks if the manager assignment is done.
