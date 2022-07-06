@@ -29,6 +29,7 @@ export class SmtpClientAssignmentErrorRecipientError extends SmtpClientAssignmen
 }
 
 export interface SmtpClientAssignmentResult {
+  to: string[];
   transfer_start?: Date;
   transfer_end?: Date;
   errors: SmtpClientAssignmentError[];

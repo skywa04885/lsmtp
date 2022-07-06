@@ -12,7 +12,14 @@ export type SmtpClientManagerAssignmentCallback = () => void;
 export class SmtpClientManagerAssignment {
   protected _assignments_in_progress: LinkedList<SmtpClientCommanderAssignment> =
     new LinkedList<SmtpClientCommanderAssignment>();
-  protected results: SmtpClientAssignmentResult[] = [];
+  protected _results: SmtpClientAssignmentResult[] = [];
+
+  /**
+   * Gets the results.
+   */
+  public get results(): SmtpClientAssignmentResult[] {
+    return this._results;
+  }
 
   /**
    * Creates a new manager assignment.
@@ -101,7 +108,7 @@ export class SmtpClientManagerAssignment {
     this._assignments_in_progress.remove(assignment);
 
     // Pushes the result.
-    this.results.push(result);
+    this._results.push(result);
 
     // Checks if the manager assignment is done.
     if (!this._assignments_in_progress.empty) {
@@ -123,7 +130,7 @@ export class SmtpClientManagerAssignment {
     this._assignments_in_progress.remove(assignment);
 
     // Pushes the result.
-    this.results.push({
+    this._results.push({
       errors: [error],
     });
 

@@ -62,6 +62,7 @@ export class SmtpClientCommander extends EventEmitter {
   protected _active_assignment_start?: Date;
   protected _active_assignment_errors?: SmtpClientAssignmentError[];
   protected _active_assignment_failed_recipients?: number;
+  protected _activeAssignment: SmtpClientCommanderAssignment | null;
 
   public get serverDomain(): string {
     return this._server_domain;
@@ -110,6 +111,7 @@ export class SmtpClientCommander extends EventEmitter {
     this._flags = new Flags();
     this._assignment_queue = new Queue<SmtpClientCommanderAssignment>();
     this._total_enqueued = this._total_executed = 0;
+    this._activeAssignment = null;
 
     // Registers the events.
     this._smtp_client.once("close", () => this._handle_close());
@@ -288,10 +290,14 @@ export class SmtpClientCommander extends EventEmitter {
   protected _transaction_finish(): void {
     // Calls the assignment callback.
     this._assignment_queue.peek().callback({
+      to: this._activeAssignment!.to,
       transfer_start: this._active_assignment_start!,
       transfer_end: new Date(),
       errors: this._active_assignment_errors!,
     });
+
+    // Clears the active assignment.
+    this._activeAssignment = null;
 
     // Sets the executing bit to false.
     this._flags.clear(SmtpCommanderFlag.EXECUTING);
@@ -357,6 +363,9 @@ export class SmtpClientCommander extends EventEmitter {
     // Sets the executing bit to true.
     this._flags.set(SmtpCommanderFlag.EXECUTING);
 
+    // Sets the active assignment.
+    this._activeAssignment = assignment;
+
     // Sets the start time, and the initial error array.
     this._active_assignment_start = new Date();
     this._active_assignment_errors = [];
@@ -364,36 +373,33 @@ export class SmtpClientCommander extends EventEmitter {
     // Checks if this is the first transaction, if so begin immediately, and clear the flag.
     if (this._flags.are_clear(SmtpCommanderFlag.TRANSACTION_HAPPENED)) {
       this._flags.set(SmtpCommanderFlag.TRANSACTION_HAPPENED);
-      this._transaction_send_from(assignment);
+      this._transaction_send_from();
       return;
     }
 
     // Sends the RSET command first.
-    this._transaction_send_rset(assignment);
+    this._transaction_send_rset();
   }
 
   /**
    * Gets called when we want to send the RSET command.
-   * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_rset(assignment: SmtpClientCommanderAssignment) {
+  protected _transaction_send_rset() {
     this._logger?.debug(`Sending RSET command to reset session ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_rset_response(assignment, response)
+      this._transaction_handle_rset_response(response)
     );
     this._smtp_client.cmd_rset();
   }
 
   /**
    * Gets called on an RSET response.
-   * @param assignment the assignment.
    * @param response the response.
    * @protected
    */
   protected _transaction_handle_rset_response(
-    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ) {
     this._logger?.debug(`Received RSET Response, beginning transaction ...`);
@@ -410,34 +416,31 @@ export class SmtpClientCommander extends EventEmitter {
     }
 
     // Sends the from.
-    this._transaction_send_from(assignment);
+    this._transaction_send_from();
   }
 
   /**
    * Gets called when we want to send the mail from command.
-   * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_from(assignment: SmtpClientCommanderAssignment) {
+  protected _transaction_send_from() {
     this._logger?.debug(`Sending mail from command ...`);
 
     // Sets the response listener.
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_from_response(assignment, response)
+      this._transaction_handle_from_response(response)
     );
 
     // Sends the mail from command.
-    this._smtp_client.cmd_mail_from(assignment.from);
+    this._smtp_client.cmd_mail_from(this._activeAssignment!.from);
   }
 
   /**
    * Handles the from response.
-   * @param assignment the assignment.
    * @param response the response.
    * @protected
    */
   protected _transaction_handle_from_response(
-    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.debug(
@@ -458,27 +461,25 @@ export class SmtpClientCommander extends EventEmitter {
     // Bootstraps the RCPT to sequence, by default the index will be zero, but this will increase
     //  each RCPT TO we send, until we've reached the number of recipients and proceed to DATA/ BDAT.
     this._active_assignment_failed_recipients = 0;
-    this._transaction_send_rcpt_to(assignment);
+    this._transaction_send_rcpt_to();
   }
 
   /**
    * Sends the RCPT to command.
-   * @param assignment the assignment.
    * @param index the index of the current recipient.
    * @protected
    */
   protected _transaction_send_rcpt_to(
-    assignment: SmtpClientCommanderAssignment,
     index: number = 0
   ): void {
     this._logger?.debug(
-      `Sending recipient (${index}): ${assignment.to[index]}`
+      `Sending recipient (${index}): ${this._activeAssignment!.to[index]}`
     );
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_rcpt_to(assignment, response, index)
+      this._transaction_handle_rcpt_to(response, index)
     );
-    this._smtp_client.cmd_rcpt_to(assignment.to[index]);
+    this._smtp_client.cmd_rcpt_to(this._activeAssignment!.to[index]);
   }
 
   /**
@@ -489,12 +490,11 @@ export class SmtpClientCommander extends EventEmitter {
    * @protected
    */
   protected _transaction_handle_rcpt_to(
-    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse,
     index: number
   ): void {
     this._logger?.debug(
-      `Received recipient response (${index}): ${assignment.to[index]}`
+      `Received recipient response (${index}): ${this._activeAssignment!.to[index]}`
     );
 
     // Makes sure that the status is valid, if not push a recipient error,
@@ -506,14 +506,14 @@ export class SmtpClientCommander extends EventEmitter {
       // Pushes the error.
       const error: SmtpClientAssignmentError =
         new SmtpClientAssignmentErrorRecipientError(
-          assignment.to[index],
+          this._activeAssignment!.to[index],
           response,
           "Response code did not match desired code: 250"
         );
 
       // Checks if any recipients succeeded, if not then just give up, else just
       //  push the error.
-      if (this._active_assignment_failed_recipients === assignment.to.length) {
+      if (this._active_assignment_failed_recipients === this._activeAssignment!.to.length) {
         this._give_up_transaction(error);
         return;
       } else {
@@ -522,8 +522,8 @@ export class SmtpClientCommander extends EventEmitter {
     }
 
     // Checks if there is another recipient to send, if so trigger that.
-    if (index + 1 < assignment.to.length) {
-      this._transaction_send_rcpt_to(assignment, ++index);
+    if (index + 1 < this._activeAssignment!.to.length) {
+      this._transaction_send_rcpt_to(++index);
       return;
     }
 
@@ -531,31 +531,28 @@ export class SmtpClientCommander extends EventEmitter {
     //  valid stop executing and call error callback.
 
     // We only do data in this fashion, it's faster for us.
-    this._transaction_send_data(assignment);
+    this._transaction_send_data();
   }
 
   /**
    * Sends the data command.
-   * @param assignment the assignment.
    * @protected
    */
-  protected _transaction_send_data(assignment: SmtpClientCommanderAssignment): void {
+  protected _transaction_send_data(): void {
     this._logger?.debug(`Sending data command ...`);
 
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_data_response(assignment, response)
+      this._transaction_handle_data_response(response)
     );
     this._smtp_client.cmd_data();
   }
 
   /**
    * Handles the data response.
-   * @param assignment the assignment.
    * @param response the response.
    * @protected
    */
   protected _transaction_handle_data_response(
-    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.debug(
@@ -576,7 +573,7 @@ export class SmtpClientCommander extends EventEmitter {
 
     // Sets the response handler for after the data command.
     this._smtp_client.once("response", (response: SmtpResponse) =>
-      this._transaction_handle_data_complete_response(assignment, response)
+      this._transaction_handle_data_complete_response(response)
     );
 
     // Creates the dot escape stream (escapes dots in the SMTP message).
@@ -593,17 +590,15 @@ export class SmtpClientCommander extends EventEmitter {
     });
 
     // Pipes the data to the encoder.
-    Readable.from(assignment.data).pipe(encoder);
+    Readable.from(this._activeAssignment!.data).pipe(encoder);
   }
 
   /**
    * Gets called when the data has been sent.
-   * @param assignment the assignment.
    * @param response the response.
    * @protected
    */
   protected _transaction_handle_data_complete_response(
-    assignment: SmtpClientCommanderAssignment,
     response: SmtpResponse
   ): void {
     this._logger?.debug("Received data complete response.");
