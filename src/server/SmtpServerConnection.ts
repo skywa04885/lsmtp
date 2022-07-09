@@ -175,7 +175,6 @@ export class SmtpServerConnection extends EventEmitter {
       return;
     }
 
-    // Gets the mailbox or name.
     let mailbox_or_name: string = command.arguments[0];
 
     // Checks if we're dealing with a mailbox or name.
@@ -188,8 +187,12 @@ export class SmtpServerConnection extends EventEmitter {
         mailbox_or_name.length - 1
       );
 
-      // Validates the mailbox.
-      if (!mailbox_or_name.match(SMTP_EMAIL_REGEX)) {
+      // Parses the email address.
+      let emailAddress: EmailAddress;
+      try {
+        emailAddress = EmailAddress.fromAddress(mailbox_or_name);
+      } catch (e) {
+        // Writes the syntax error.
         this.smtp_socket.write(
           new SmtpResponse(
             501,
@@ -198,13 +201,15 @@ export class SmtpServerConnection extends EventEmitter {
           ).encode(true)
         );
         this.smtp_socket.close();
+
+        // Returns.
         return;
       }
 
       // Verifies the mailbox.
       const mailbox: SmtpMailbox | null =
-        await this.server.config.callbacks.verify_mailbox(
-          mailbox_or_name,
+        await this.server.config.callbacks.verifyMailbox(
+          emailAddress,
           this
         );
 
@@ -234,7 +239,7 @@ export class SmtpServerConnection extends EventEmitter {
 
     // We're dealing with a name.
     const mailboxes: SmtpMailbox[] =
-      await this.server.config.callbacks.verify_name(mailbox_or_name, this);
+      await this.server.config.callbacks.verifyName(mailbox_or_name, this);
 
     // Checks how to respond.
     if (mailboxes.length === 0) {
@@ -307,7 +312,7 @@ export class SmtpServerConnection extends EventEmitter {
     );
 
     // Calls the callback.
-    return await this.server.config.callbacks.handle_mail(mail, this);
+    return await this.server.config.callbacks.handleMail(mail, this);
   }
 
   /**
@@ -467,12 +472,20 @@ export class SmtpServerConnection extends EventEmitter {
         // Decodes the base64 value.
         const [user_arg, pass_arg] = __auth_plain_parse(data);
 
+        // Parses the email address.
+        let emailAddress: EmailAddress;
+        try {
+          emailAddress = EmailAddress.fromAddress(user_arg);
+        } catch (e) {
+          throw new SmtpSyntaxError('Invalid E-Mail address');
+        }
+
         // Gets the user, and checks if the credentials are correct.
         const user: SmtpUser | null =
-          await this.server.config.callbacks.get_user(user_arg, this);
+          await this.server.config.callbacks.getUser(emailAddress, this);
         if (
           !user ||
-          !(await this.server.config.callbacks.password_compare(
+          !(await this.server.config.callbacks.comparePassword(
             pass_arg,
             user.pass
           ))
@@ -678,12 +691,20 @@ export class SmtpServerConnection extends EventEmitter {
         // Gets the second argument, and decodes the Base64 value.
         const [user_arg, pass_arg] = __auth_plain_parse(command.arguments[1]);
 
+        // Parses the email address.
+        let emailAddress: EmailAddress;
+        try {
+          emailAddress = EmailAddress.fromAddress(user_arg);
+        } catch (e) {
+          throw new SmtpSyntaxError('Invalid E-Mail address');
+        }
+
         // Gets the user, and checks if the credentials are correct.
         const user: SmtpUser | null =
-          await this.server.config.callbacks.get_user(user_arg, this);
+          await this.server.config.callbacks.getUser(emailAddress, this);
         if (
           !user ||
-          !(await this.server.config.callbacks.password_compare(
+          !(await this.server.config.callbacks.comparePassword(
             pass_arg,
             user.pass
           ))
@@ -729,7 +750,7 @@ export class SmtpServerConnection extends EventEmitter {
 
         // Validates the token.
         const user: SmtpUser | null =
-          await this.server.config.callbacks.verify_xoath2(token, this);
+          await this.server.config.callbacks.verifyXoauth2(token, this);
         if (!user) {
           this.smtp_socket.write(
             new SmtpResponse(
@@ -1099,7 +1120,7 @@ export class SmtpServerConnection extends EventEmitter {
     }
 
     // Calls the handle from callback.
-    await this.server.config.callbacks.handle_mail_from(from, this);
+    await this.server.config.callbacks.handleMailFrom(from, this);
 
     // Updates the session.
     this.session.from = from;
@@ -1151,7 +1172,7 @@ export class SmtpServerConnection extends EventEmitter {
       SmtpServerMessageTarget.decode(address);
 
     // Handles the target, this will perform extra validation (if needed).
-    await this.server.config.callbacks.handle_rcpt_to(target, this);
+    await this.server.config.callbacks.handleRcptTo(target, this);
 
     // Makes sure the email is not yet in the array.
     if (this.session.to && this.session.to_contains(target)) {

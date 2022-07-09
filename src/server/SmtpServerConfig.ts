@@ -6,6 +6,7 @@ import { SmtpServerMail } from "./SmtpServerMail";
 import { XOATH2Token } from "lxoauth2/dist/XOAUTH2Token";
 import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
 import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
+import {EmailAddress} from "llibemailaddress";
 
 export enum SmtpServerFeatureFlag {
   Chunking = 1 << 0, // Chunking and BinaryMIME.
@@ -18,32 +19,32 @@ export enum SmtpServerFeatureFlag {
 }
 
 export interface SmtpServerConfigCallbacks {
-  handle_mail_from: (
+  handleMailFrom: (
     address: SmtpServerMessageFrom,
     connection: SmtpServerConnection
   ) => Promise<void>;
-  handle_rcpt_to: (
+  handleRcptTo: (
     address: SmtpServerMessageTarget,
     connection: SmtpServerConnection
   ) => Promise<void>;
-  verify_name: (
+  verifyName: (
     name: string,
     connection: SmtpServerConnection
   ) => Promise<SmtpMailbox[]>;
-  verify_mailbox: (
-    mailbox: string,
+  verifyMailbox: (
+    email: EmailAddress,
     connection: SmtpServerConnection
   ) => Promise<SmtpMailbox | null>;
-  handle_mail: (
+  handleMail: (
     mail: SmtpServerMail,
     connection: SmtpServerConnection
   ) => Promise<Error | null>;
-  get_user: (
-    user: string,
+  getUser: (
+    email: EmailAddress,
     connection: SmtpServerConnection
   ) => Promise<SmtpUser | null>;
-  password_compare: (pass: string, hash: string) => Promise<boolean>;
-  verify_xoath2: (
+  comparePassword: (pass: string, hash: string) => Promise<boolean>;
+  verifyXoauth2: (
     token: XOATH2Token,
     connection: SmtpServerConnection
   ) => Promise<SmtpUser | null>;
