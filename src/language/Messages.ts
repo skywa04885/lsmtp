@@ -1,8 +1,8 @@
 import { SmtpServerConnection } from "../server/SmtpServerConnection";
 import { SmtpCommandType } from "../shared/SmtpCommand";
-import { HOSTNAME, MAX_MESSAGE_SIZE } from "../shared/SmtpConstants";
+import { HOSTNAME } from "../shared/SmtpConstants";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
-import {EmailAddress} from "llibemailaddress";
+import { EmailAddress } from "llibemailaddress";
 
 export const SUFFIX = `${HOSTNAME} - lsmtp`;
 
@@ -67,7 +67,10 @@ export const Messages = {
     ): string => {
       return `Command ${command_type} is disabled. ${SUFFIX}`;
     },
-    rejected: (explaination: string, connection: SmtpServerConnection): string => {
+    rejected: (
+      explaination: string,
+      connection: SmtpServerConnection
+    ): string => {
       return `Rejecting message, explaination: '${explaination}'`;
     },
   },

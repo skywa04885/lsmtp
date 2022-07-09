@@ -2,8 +2,6 @@ import util from "util";
 import dns from "dns";
 
 export class SmtpMailExchanges {
-  protected _hostname: string;
-  protected _exchanges: dns.MxRecord[];
   protected _exchange_index: number = 0;
 
   /**
@@ -16,18 +14,22 @@ export class SmtpMailExchanges {
     this._exchanges = exchanges;
   }
 
-  /**
-   * Gets all the exchanges.
-   */
-  public get exchanges(): dns.MxRecord[] {
-    return this._exchanges;
-  }
+  protected _hostname: string;
 
   /**
    * Gets the hostname.
    */
   public get hostname(): string {
     return this._hostname;
+  }
+
+  protected _exchanges: dns.MxRecord[];
+
+  /**
+   * Gets all the exchanges.
+   */
+  public get exchanges(): dns.MxRecord[] {
+    return this._exchanges;
   }
 
   /**

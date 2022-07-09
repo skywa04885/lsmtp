@@ -1,4 +1,3 @@
-import { sep } from "path/posix";
 import { LINE_SEPARATOR } from "./SmtpConstants";
 
 export class SmtpDataBuffer {
@@ -9,6 +8,14 @@ export class SmtpDataBuffer {
    */
   public constructor() {
     this.buffer = "";
+  }
+
+  /**
+   * Gets the length of the buffer.
+   * @returns the length of the buffer.
+   */
+  public get length(): number {
+    return this.buffer.length;
   }
 
   /**
@@ -61,13 +68,5 @@ export class SmtpDataBuffer {
 
     // Returns the segment.
     return segment;
-  }
-
-  /**
-   * Gets the length of the buffer.
-   * @returns the length of the buffer.
-   */
-  public get length(): number {
-    return this.buffer.length;
   }
 }

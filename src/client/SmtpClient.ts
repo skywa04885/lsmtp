@@ -1,15 +1,17 @@
-import {SmtpResponse} from "../shared/SmtpResponse";
-import {EventEmitter} from "events";
-import {SmtpCommand, SmtpCommandType} from "../shared/SmtpCommand";
-import {SmtpSocket} from "../shared/SmtpSocket";
-import {SmtpClientStream} from "./SmtpClientStream";
+import { SmtpResponse } from "../shared/SmtpResponse";
+import { EventEmitter } from "events";
+import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
+import { SmtpSocket } from "../shared/SmtpSocket";
+import { SmtpClientStream } from "./SmtpClientStream";
 import winston from "winston";
-import {EmailAddress} from "llibemailaddress";
+import { EmailAddress } from "llibemailaddress";
 
-export type SendCommandAddResponseListenerType = (command: SmtpCommand, response: SmtpResponse) => void;
+export type SendCommandAddResponseListenerType = (
+  command: SmtpCommand,
+  response: SmtpResponse
+) => void;
 
-export interface SmtpClientOptions {
-}
+export interface SmtpClientOptions {}
 
 export declare interface SmtpClient {
   once(event: "upgrade", listener: () => void): this;
@@ -28,7 +30,6 @@ export declare interface SmtpClient {
 }
 
 export class SmtpClient extends EventEmitter {
-  protected _smtpSocket: SmtpSocket;
   protected _smtpStream: SmtpClientStream;
   protected _logger?: winston.Logger;
 
@@ -61,6 +62,8 @@ export class SmtpClient extends EventEmitter {
       this._handleResponse(response)
     );
   }
+
+  protected _smtpSocket: SmtpSocket;
 
   ////////////////////////////////////////////////
   // Getters
@@ -95,18 +98,6 @@ export class SmtpClient extends EventEmitter {
   }
 
   /**
-   * Adds a response listener.
-   * @param command sent command.
-   * @param listener the listener.
-   * @protected
-   */
-  protected _sendCommandAddResponseListener(command: SmtpCommand, listener: SendCommandAddResponseListenerType) {
-    this.on('response', (response: SmtpResponse): void => {
-      listener(command, response);
-    });
-  }
-
-  /**
    * Sends the given command.
    * @param command the command to send.
    */
@@ -122,8 +113,13 @@ export class SmtpClient extends EventEmitter {
    * @param serverHostname the server's hostname.
    * @param listener the response listener.
    */
-  public sendEHLOCommand(serverHostname: string, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Ehlo, [serverHostname]);
+  public sendEHLOCommand(
+    serverHostname: string,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Ehlo, [
+      serverHostname,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -138,8 +134,13 @@ export class SmtpClient extends EventEmitter {
    * @param serverHostname the server's hostname.
    * @param listener the response listener.
    */
-  public sendHELOCommand(serverHostname: string, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Helo, [serverHostname])
+  public sendHELOCommand(
+    serverHostname: string,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Helo, [
+      serverHostname,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -153,8 +154,10 @@ export class SmtpClient extends EventEmitter {
    * Sends the RSET Command.
    * @param listener the response listener.
    */
-  public sendRSETCommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Rset, null)
+  public sendRSETCommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Rset, null);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -168,8 +171,13 @@ export class SmtpClient extends EventEmitter {
    * Sends the STARTTLS command.
    * @param listener the response listener.
    */
-  public sendSTARTTLSCommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.StartTLS, null)
+  public sendSTARTTLSCommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(
+      SmtpCommandType.StartTLS,
+      null
+    );
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -184,8 +192,13 @@ export class SmtpClient extends EventEmitter {
    * @param from the source email address.
    * @param listener the response listener.
    */
-  public sendMAILFROMCommand(from: EmailAddress, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Mail, [`FROM:<${from.address}>`])
+  public sendMAILFROMCommand(
+    from: EmailAddress,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Mail, [
+      `FROM:<${from.address}>`,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -200,8 +213,13 @@ export class SmtpClient extends EventEmitter {
    * @param to the destination email address.
    * @param listener the response listener.
    */
-  public sendRCPTTOCommand(to: EmailAddress, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Rcpt, [`TO:<${to.address}>`])
+  public sendRCPTTOCommand(
+    to: EmailAddress,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Rcpt, [
+      `TO:<${to.address}>`,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -217,7 +235,11 @@ export class SmtpClient extends EventEmitter {
    * @param last if it's the last chunk.
    * @param listener the response listener.
    */
-  public sendBDATCommand(size: number, last: boolean = false, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
+  public sendBDATCommand(
+    size: number,
+    last: boolean = false,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
     let parameters: string[] = [];
 
     // Pushes the size of the chunk.
@@ -229,7 +251,10 @@ export class SmtpClient extends EventEmitter {
     }
 
     // Constructs the command.
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Bdat, parameters);
+    const command: SmtpCommand = new SmtpCommand(
+      SmtpCommandType.Bdat,
+      parameters
+    );
 
     // Adds the listener if there.
     if (listener !== null) {
@@ -245,8 +270,10 @@ export class SmtpClient extends EventEmitter {
    * Sends the DATA command.
    * @param listener the response listener.
    */
-  public sendDATACommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Data, null)
+  public sendDATACommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Data, null);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -260,8 +287,10 @@ export class SmtpClient extends EventEmitter {
    * Sends the HELP command.
    * @param listener the response listener.
    */
-  public sendHELPCommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Help, null)
+  public sendHELPCommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Help, null);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -275,8 +304,10 @@ export class SmtpClient extends EventEmitter {
    * Sends the QUIT command.
    * @param listener the response listener.
    */
-  public sendQUITCommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Quit, null)
+  public sendQUITCommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Quit, null);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -291,8 +322,13 @@ export class SmtpClient extends EventEmitter {
    * @param email
    * @param listener the response listener.
    */
-  public sendVRFYAddressCommand(email: EmailAddress, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Vrfy, [`<${email.address}>`])
+  public sendVRFYAddressCommand(
+    email: EmailAddress,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Vrfy, [
+      `<${email.address}>`,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -307,8 +343,11 @@ export class SmtpClient extends EventEmitter {
    * @param name
    * @param listener the response listener.
    */
-  public sendVRFYNameCommand(name: string, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Vrfy, [name])
+  public sendVRFYNameCommand(
+    name: string,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Vrfy, [name]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -323,8 +362,13 @@ export class SmtpClient extends EventEmitter {
    * @param mailbox
    * @param listener the response listener.
    */
-  public sendEXPNCommand(mailbox: string, listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
-    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Expn, [mailbox]);
+  public sendEXPNCommand(
+    mailbox: string,
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
+    const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Expn, [
+      mailbox,
+    ]);
 
     if (listener !== null) {
       this._sendCommandAddResponseListener(command, listener);
@@ -338,7 +382,9 @@ export class SmtpClient extends EventEmitter {
    * Sends the NOOP Command.
    * @param listener the response listener.
    */
-  public sendNOOPCommand(listener: SendCommandAddResponseListenerType | null = null): SmtpCommand {
+  public sendNOOPCommand(
+    listener: SendCommandAddResponseListenerType | null = null
+  ): SmtpCommand {
     const command: SmtpCommand = new SmtpCommand(SmtpCommandType.Noop, null);
 
     if (listener !== null) {
@@ -347,6 +393,21 @@ export class SmtpClient extends EventEmitter {
 
     this.sendCommand(command);
     return command;
+  }
+
+  /**
+   * Adds a response listener.
+   * @param command sent command.
+   * @param listener the listener.
+   * @protected
+   */
+  protected _sendCommandAddResponseListener(
+    command: SmtpCommand,
+    listener: SendCommandAddResponseListenerType
+  ) {
+    this.once("response", (response: SmtpResponse): void => {
+      listener(command, response);
+    });
   }
 
   ////////////////////////////////////////////////

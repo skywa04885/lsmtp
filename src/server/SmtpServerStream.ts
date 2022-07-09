@@ -1,5 +1,4 @@
 import { Writable, WritableOptions } from "stream";
-import { SmtpCommand } from "../shared/SmtpCommand";
 import { DATA_END, LINE_SEPARATOR } from "../shared/SmtpConstants";
 import { SmtpDataBuffer } from "../shared/SmtpSegmentedReader";
 
@@ -165,12 +164,7 @@ export class SmtpStream extends Writable {
     let segment: string | null;
     while (true) {
       // Gets the segment, and if not. Break.
-      if (
-        (segment = this._buffer.segment(
-          DATA_END,
-          0
-        )) === null
-      ) {
+      if ((segment = this._buffer.segment(DATA_END, 0)) === null) {
         break;
       }
 

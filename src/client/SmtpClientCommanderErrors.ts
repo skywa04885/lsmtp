@@ -6,13 +6,13 @@ import {SmtpResponse} from "../shared/SmtpResponse";
 /////////////////////////////////////////////
 
 export class SmtpClientCommanderError {
-  public constructor(message: string | null = null) {}
+  public constructor(public readonly message: string | null = null) {}
 
   /**
    * Gets the label of the error.
    */
   get label(): string {
-    return 'General';
+    return "General";
   }
 }
 
@@ -21,10 +21,10 @@ export class SmtpClientCommanderError {
 /////////////////////////////////////////////
 
 export enum SmtpClientCommanderNetworkingErrorOrigin {
-  Other = 'other',
-  Connect = 'connect',
-  Upgrade = 'upgrade',
-  PrematureClosing = 'premature-close',
+  Other = "other",
+  Connect = "connect",
+  Upgrade = "upgrade",
+  PrematureClosing = "premature-close",
 }
 
 export class SmtpClientCommanderNetworkingError extends SmtpClientCommanderError {
@@ -33,16 +33,18 @@ export class SmtpClientCommanderNetworkingError extends SmtpClientCommanderError
    * @param origin the origin of the networking error.
    * @param message the message associated with it.
    */
-  public constructor(public readonly origin: SmtpClientCommanderNetworkingErrorOrigin, message: string | null = null) {
+  public constructor(
+    public readonly origin: SmtpClientCommanderNetworkingErrorOrigin,
+    message: string | null = null
+  ) {
     super(message);
   }
-
 
   /**
    * Gets the label of the error.
    */
   get label(): string {
-    return 'Networking';
+    return "Networking";
   }
 }
 
@@ -51,7 +53,11 @@ export class SmtpClientCommanderNetworkingError extends SmtpClientCommanderError
 /////////////////////////////////////////////
 
 export class SmtpClientCommanderTransactionError extends SmtpClientCommanderError {
-  public constructor(public readonly command: SmtpCommand | null, public readonly response: SmtpResponse, message: string | null = null) {
+  public constructor(
+    public readonly command: SmtpCommand | null,
+    public readonly response: SmtpResponse,
+    message: string | null = null
+  ) {
     super(message);
   }
 
@@ -59,7 +65,7 @@ export class SmtpClientCommanderTransactionError extends SmtpClientCommanderErro
    * Gets the label of the error.
    */
   get label(): string {
-    return 'Transaction';
+    return "Transaction";
   }
 }
 

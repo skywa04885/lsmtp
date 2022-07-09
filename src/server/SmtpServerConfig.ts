@@ -19,13 +19,13 @@ export enum SmtpServerFeatureFlag {
 
 export interface SmtpServerConfigCallbacks {
   handle_mail_from: (
-    address: string,
+    address: SmtpServerMessageFrom,
     connection: SmtpServerConnection
-  ) => Promise<SmtpServerMessageFrom | Error>;
+  ) => Promise<void>;
   handle_rcpt_to: (
-    address: string,
+    address: SmtpServerMessageTarget,
     connection: SmtpServerConnection
-  ) => Promise<SmtpServerMessageTarget | Error>;
+  ) => Promise<void>;
   verify_name: (
     name: string,
     connection: SmtpServerConnection

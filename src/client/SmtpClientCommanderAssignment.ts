@@ -13,12 +13,6 @@ export enum SmtpClientCommanderAssignmentState {
 }
 
 export class SmtpClientCommanderAssignment {
-  protected _state: SmtpClientCommanderAssignmentState;
-
-  protected _transactionStartDate: Date | null;
-  protected _transactionEndDate: Date | null;
-  protected _errors: SmtpClientCommanderErrors;
-
   /**
    * Constructs a new commander assignment.
    * @param domain the domain to send to.
@@ -31,7 +25,7 @@ export class SmtpClientCommanderAssignment {
     public readonly domain: string,
     public readonly from: EmailAddress,
     public readonly to: EmailAddress[],
-    public readonly cb: (() => void) | null = null,
+    public readonly cb: (() => void) | null = null
   ) {
     this._state = SmtpClientCommanderAssignmentState.Enqueued;
 
@@ -41,11 +35,48 @@ export class SmtpClientCommanderAssignment {
     this._errors = new SmtpClientCommanderErrors();
   }
 
+  protected _state: SmtpClientCommanderAssignmentState;
+
   /**
    * Gets the state.
    */
   public get state(): SmtpClientCommanderAssignmentState {
     return this._state;
+  }
+
+  protected _transactionStartDate: Date | null;
+
+  /**
+   * Gets the start date.
+   */
+  public get transactionStartDate(): Date {
+    if (!this._transactionStartDate) {
+      throw new Error("Start date is not available yet.");
+    }
+
+    return this._transactionStartDate;
+  }
+
+  protected _transactionEndDate: Date | null;
+
+  /**
+   * Gets the end date.
+   */
+  public get transactionEndDate(): Date {
+    if (!this._transactionEndDate) {
+      throw new Error("End date is not available yet.");
+    }
+
+    return this._transactionEndDate;
+  }
+
+  protected _errors: SmtpClientCommanderErrors;
+
+  /**
+   * Gets the errors class.
+   */
+  public get errors(): SmtpClientCommanderErrors {
+    return this._errors;
   }
 
   /**
@@ -71,35 +102,6 @@ export class SmtpClientCommanderAssignment {
     this._transactionEndDate = new Date();
     this._state = SmtpClientCommanderAssignmentState.Executed;
   }
-
-  /**
-   * Gets the start date.
-   */
-  public get transactionStartDate(): Date {
-    if (!this._transactionStartDate) {
-      throw new Error('Start date is not available yet.');
-    }
-
-    return this._transactionStartDate;
-  }
-
-  /**
-   * Gets the end date.
-   */
-  public get transactionEndDate(): Date {
-    if (!this._transactionEndDate) {
-      throw new Error('End date is not available yet.');
-    }
-
-    return this._transactionEndDate;
-  }
-
-  /**
-   * Gets the errors class.
-   */
-  public get errors(): SmtpClientCommanderErrors {
-    return this._errors;
-  }
 }
 
 /////////////////////////////////////////////
@@ -120,7 +122,7 @@ export class SmtpClientCommanderBufferAssignment extends SmtpClientCommanderAssi
     domain: string,
     from: EmailAddress,
     to: EmailAddress[],
-    cb: (() => void) | null = null,
+    cb: (() => void) | null = null
   ) {
     super(domain, from, to, cb);
   }
@@ -144,7 +146,7 @@ export class SmtpClientCommanderStreamAssignment extends SmtpClientCommanderAssi
     domain: string,
     from: EmailAddress,
     to: EmailAddress[],
-    cb: (() => void) | null = null,
+    cb: (() => void) | null = null
   ) {
     super(domain, from, to, cb);
   }

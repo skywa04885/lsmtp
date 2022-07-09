@@ -1,4 +1,4 @@
-import net, { NetConnectOpts } from "net";
+import net from "net";
 import { EventEmitter } from "events";
 import tls from "tls";
 import assert from "assert";
@@ -36,44 +36,6 @@ export class SmtpSocket extends EventEmitter {
 
   ////////////////////////////////////////////////
   // Private Instance Methods
-  ////////////////////////////////////////////////
-
-  /**
-   * Initializes the socket, and does stuff such as registering the events.
-   */
-  protected _initialize(): void {
-    this._assert_socket();
-
-    this.socket!.on("close", () => this._event_close());
-    this.socket!.on("data", (data: Buffer) => this._event_data(data));
-    this.socket!.on("error", (err: Error) => this._event_error(err));
-    this.socket!.on("timeout", () => this._event_timeout());
-  }
-
-  /**
-   * Asserts the socket exists.
-   */
-  protected _assert_socket(): void {
-    assert.notEqual(
-      this.socket,
-      undefined,
-      "This operation is ony allowed with a valid socket."
-    );
-  }
-
-  /**
-   * Asserts that the socket does not exists.
-   */
-  protected _assert_not_socket(): void {
-    assert.equal(
-      this.socket,
-      undefined,
-      "This operation is only allowed when there is no socket yet."
-    );
-  }
-
-  ////////////////////////////////////////////////
-  // Getters
   ////////////////////////////////////////////////
 
   /**
@@ -116,7 +78,7 @@ export class SmtpSocket extends EventEmitter {
   }
 
   ////////////////////////////////////////////////
-  // Instance Methods
+  // Getters
   ////////////////////////////////////////////////
 
   /**
@@ -145,6 +107,10 @@ export class SmtpSocket extends EventEmitter {
 
     this.socket!.resume();
   }
+
+  ////////////////////////////////////////////////
+  // Instance Methods
+  ////////////////////////////////////////////////
 
   /**
    * Sets the socket timeout.
@@ -215,6 +181,40 @@ export class SmtpSocket extends EventEmitter {
         rejectUnauthorized: false,
       },
       () => this._event_upgrade()
+    );
+  }
+
+  /**
+   * Initializes the socket, and does stuff such as registering the events.
+   */
+  protected _initialize(): void {
+    this._assert_socket();
+
+    this.socket!.on("close", () => this._event_close());
+    this.socket!.on("data", (data: Buffer) => this._event_data(data));
+    this.socket!.on("error", (err: Error) => this._event_error(err));
+    this.socket!.on("timeout", () => this._event_timeout());
+  }
+
+  /**
+   * Asserts the socket exists.
+   */
+  protected _assert_socket(): void {
+    assert.notEqual(
+      this.socket,
+      undefined,
+      "This operation is ony allowed with a valid socket."
+    );
+  }
+
+  /**
+   * Asserts that the socket does not exists.
+   */
+  protected _assert_not_socket(): void {
+    assert.equal(
+      this.socket,
+      undefined,
+      "This operation is only allowed when there is no socket yet."
     );
   }
 

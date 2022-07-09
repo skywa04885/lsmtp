@@ -2,18 +2,16 @@ import { XOATH2Token } from "lxoauth2/dist/XOAUTH2Token";
 import { EventEmitter } from "stream";
 import { Messages } from "../language/Messages";
 import { SmtpAuthType } from "../shared/SmtpAuth";
-import { SmtpCapability, SmtpCapabilityType } from "../shared/SmtpCapability";
+import { SmtpCapability } from "../shared/SmtpCapability";
 import { SmtpCommand, SmtpCommandType } from "../shared/SmtpCommand";
-import {
-  MAX_INVALID_COMMANDS,
-  MAX_MESSAGE_SIZE,
-} from "../shared/SmtpConstants";
+import { MAX_INVALID_COMMANDS } from "../shared/SmtpConstants";
 import {
   SmtpBadSequenceError,
   SmtpCommandDisabled,
   SmtpInvalidCommandArguments,
   SmtpInvalidCommandError,
   SmtpPolicyError,
+  SmtpSyntaxError,
 } from "../shared/SmtpError";
 import { SmtpMailbox } from "../shared/SmtpMailbox";
 import { SmtpMultipleLineResponse } from "../shared/SmtpMutipleLineResponse";
@@ -24,13 +22,18 @@ import { SmtpUser } from "../shared/SmtpUser";
 import { SmtpServer } from "./SmtpServer";
 import { SmtpServerFeatureFlag } from "./SmtpServerConfig";
 import { SmtpServerMail, SmtpServerMailMeta } from "./SmtpServerMail";
-import { SmtpServerMessageFrom } from "./SmtpServerMessageFrom";
 import {
-  SmtpServerMessageTarget,
-  SmtpServerMessageTargetType,
-} from "./SmtpServerMessageTarget";
-import { SmtpServerSession, SmtpServerSessionFlag, SmtpServerSessionType } from "./SmtpServerSession";
+  SmtpServerMessageFrom,
+  SmtpServerMessageFromType,
+} from "./SmtpServerMessageFrom";
+import { SmtpServerMessageTarget } from "./SmtpServerMessageTarget";
+import {
+  SmtpServerSession,
+  SmtpServerSessionFlag,
+  SmtpServerSessionType,
+} from "./SmtpServerSession";
 import { SmtpStream } from "./SmtpServerStream";
+import { EmailAddress } from "llibemailaddress";
 
 export const enum SmtpServerConnectionLineIdentifier {
   AuthenticationPlain = 0,
@@ -107,8 +110,8 @@ function __mail_rcpt_address_parse(
 }
 
 export class SmtpServerConnection extends EventEmitter {
-  protected stream: SmtpStream;
   public udata: any;
+  protected stream: SmtpStream;
 
   /**
    * Constructs a new SmtpServerConnection.
@@ -147,6 +150,118 @@ export class SmtpServerConnection extends EventEmitter {
     this.smtp_socket.write(
       new SmtpResponse(220, Messages.greeting._(this)).encode(true)
     );
+  }
+
+  /**
+   * Handles the VRFY command.
+   * @param command the command.
+   */
+  public async _handle_vrfy(command: SmtpCommand): Promise<void> {
+    // Checks if the command is disabled.
+    if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Vrfy)) {
+      throw new SmtpCommandDisabled();
+    }
+
+    // Makes sure there are arguments.
+    if (!command.arguments) {
+      this.smtp_socket.write(
+        new SmtpResponse(
+          501,
+          Messages.vrfy.may_not_be_empty(this),
+          new SmtpEnhancedStatusCode(5, 5, 4)
+        ).encode(true)
+      );
+      this.smtp_socket.close();
+      return;
+    }
+
+    // Gets the mailbox or name.
+    let mailbox_or_name: string = command.arguments[0];
+
+    // Checks if we're dealing with a mailbox or name.
+    const opening_bracket_index: number = mailbox_or_name.indexOf("<");
+    const closing_bracket_index: number = mailbox_or_name.lastIndexOf(">");
+    if (opening_bracket_index !== -1 && closing_bracket_index !== -1) {
+      // Mailbox
+      mailbox_or_name = mailbox_or_name.substring(
+        1,
+        mailbox_or_name.length - 1
+      );
+
+      // Validates the mailbox.
+      if (!mailbox_or_name.match(SMTP_EMAIL_REGEX)) {
+        this.smtp_socket.write(
+          new SmtpResponse(
+            501,
+            Messages.general.syntax_error(this),
+            new SmtpEnhancedStatusCode(5, 1, 3)
+          ).encode(true)
+        );
+        this.smtp_socket.close();
+        return;
+      }
+
+      // Verifies the mailbox.
+      const mailbox: SmtpMailbox | null =
+        await this.server.config.callbacks.verify_mailbox(
+          mailbox_or_name,
+          this
+        );
+
+      // Sends the response.
+      if (!mailbox) {
+        this.smtp_socket.write(
+          new SmtpResponse(
+            550,
+            Messages.vrfy.mailbox_unavailable(this),
+            new SmtpEnhancedStatusCode(5, 1, 2)
+          ).encode(true)
+        );
+        return;
+      }
+
+      this.smtp_socket.write(
+        new SmtpResponse(
+          250,
+          Messages.vrfy._(mailbox, this),
+          new SmtpEnhancedStatusCode(2, 1, 5)
+        ).encode(true)
+      );
+      return;
+    } else if (opening_bracket_index !== -1 || closing_bracket_index !== -1) {
+      throw new SyntaxError("Closing or opening bracket missing!");
+    }
+
+    // We're dealing with a name.
+    const mailboxes: SmtpMailbox[] =
+      await this.server.config.callbacks.verify_name(mailbox_or_name, this);
+
+    // Checks how to respond.
+    if (mailboxes.length === 0) {
+      this.smtp_socket.write(
+        new SmtpResponse(
+          550,
+          Messages.vrfy.mailbox_unavailable(this),
+          new SmtpEnhancedStatusCode(5, 1, 2)
+        ).encode(true)
+      );
+    } else if (mailboxes.length === 1) {
+      this.smtp_socket.write(
+        new SmtpResponse(
+          250,
+          Messages.vrfy._(mailboxes[0], this),
+          new SmtpEnhancedStatusCode(2, 1, 5)
+        ).encode(true)
+      );
+    } else {
+      this.smtp_socket.write(
+        new SmtpResponse(
+          550,
+          Messages.vrfy.ambiguous(mailbox_or_name, this),
+          new SmtpEnhancedStatusCode(5, 1, 4)
+        ).encode(true)
+      );
+    }
   }
 
   /**
@@ -849,7 +964,9 @@ export class SmtpServerConnection extends EventEmitter {
 
     // Checks if the session already has an type set, if not set it.
     if (this.session.type === null) {
-      this.session.type = this.smtp_socket.secure ? SmtpServerSessionType.SMTPS : SmtpServerSessionType.SMTP;
+      this.session.type = this.smtp_socket.secure
+        ? SmtpServerSessionType.SMTPS
+        : SmtpServerSessionType.SMTP;
     }
 
     // Resets the state.
@@ -900,7 +1017,9 @@ export class SmtpServerConnection extends EventEmitter {
 
     // Checks if the session already has an type set, if not set it.
     if (this.session.type === null) {
-      this.session.type = this.smtp_socket.secure ? SmtpServerSessionType.ESMTPS : SmtpServerSessionType.ESMTP;
+      this.session.type = this.smtp_socket.secure
+        ? SmtpServerSessionType.ESMTPS
+        : SmtpServerSessionType.ESMTP;
     }
 
     // Resets the state.
@@ -966,21 +1085,24 @@ export class SmtpServerConnection extends EventEmitter {
     // Gets the address.
     const address: string = __mail_rcpt_address_parse(address_argument, "FROM");
 
-    // Validates the email with an regex.
-    if (!address.match(SMTP_EMAIL_REGEX)) {
-      throw new SyntaxError("Email RegExp failed.");
+    // Parses the from.
+    let from: SmtpServerMessageFrom;
+    try {
+      from = new SmtpServerMessageFrom(
+        SmtpServerMessageFromType.Remote,
+        EmailAddress.fromAddress(address)
+      );
+    } catch (e) {
+      throw new SmtpSyntaxError(
+        `Invalid E-Mail address: ${(e as Error).message}`
+      );
     }
 
-    // Handles the from event, and checks if we're dealing with an error
-    //  if so we will return the error.
-    const handlerResult: SmtpServerMessageFrom | Error =
-      await this.server.config.callbacks.handle_mail_from(address, this);
-    if (handlerResult instanceof Error) {
-      throw handlerResult;
-    }
+    // Calls the handle from callback.
+    await this.server.config.callbacks.handle_mail_from(from, this);
 
-    // Sets the from.
-    this.session.from = handlerResult;
+    // Updates the session.
+    this.session.from = from;
 
     // Sets the flags.
     this.session.set_flags(SmtpServerSessionFlag.From);
@@ -1022,14 +1144,14 @@ export class SmtpServerConnection extends EventEmitter {
 
     // Gets the args, and reads the address from them.
     const args: string[] = command.arguments as string[];
-    const address = __mail_rcpt_address_parse(args[0], "TO");
+    const address: string = __mail_rcpt_address_parse(args[0], "TO");
+
+    // Parses the target.
+    const target: SmtpServerMessageTarget =
+      SmtpServerMessageTarget.decode(address);
 
     // Handles the target, this will perform extra validation (if needed).
-    const target: SmtpServerMessageTarget | Error =
-      await this.server.config.callbacks.handle_rcpt_to(address, this);
-    if (target instanceof Error) {
-      throw target;
-    }
+    await this.server.config.callbacks.handle_rcpt_to(target, this);
 
     // Makes sure the email is not yet in the array.
     if (this.session.to && this.session.to_contains(target)) {
@@ -1088,117 +1210,5 @@ export class SmtpServerConnection extends EventEmitter {
         new SmtpEnhancedStatusCode(2, 1, 0)
       ).encode(true)
     );
-  }
-
-  /**
-   * Handles the VRFY command.
-   * @param command the command.
-   */
-  public async _handle_vrfy(command: SmtpCommand): Promise<void> {
-    // Checks if the command is disabled.
-    if (!this.server.config.feature_enabled(SmtpServerFeatureFlag.Vrfy)) {
-      throw new SmtpCommandDisabled();
-    }
-
-    // Makes sure there are arguments.
-    if (!command.arguments) {
-      this.smtp_socket.write(
-        new SmtpResponse(
-          501,
-          Messages.vrfy.may_not_be_empty(this),
-          new SmtpEnhancedStatusCode(5, 5, 4)
-        ).encode(true)
-      );
-      this.smtp_socket.close();
-      return;
-    }
-
-    // Gets the mailbox or name.
-    let mailbox_or_name: string = command.arguments[0];
-
-    // Checks if we're dealing with a mailbox or name.
-    const opening_bracket_index: number = mailbox_or_name.indexOf("<");
-    const closing_bracket_index: number = mailbox_or_name.lastIndexOf(">");
-    if (opening_bracket_index !== -1 && closing_bracket_index !== -1) {
-      // Mailbox
-      mailbox_or_name = mailbox_or_name.substring(
-        1,
-        mailbox_or_name.length - 1
-      );
-
-      // Validates the mailbox.
-      if (!mailbox_or_name.match(SMTP_EMAIL_REGEX)) {
-        this.smtp_socket.write(
-          new SmtpResponse(
-            501,
-            Messages.general.syntax_error(this),
-            new SmtpEnhancedStatusCode(5, 1, 3)
-          ).encode(true)
-        );
-        this.smtp_socket.close();
-        return;
-      }
-
-      // Verifies the mailbox.
-      const mailbox: SmtpMailbox | null =
-        await this.server.config.callbacks.verify_mailbox(
-          mailbox_or_name,
-          this
-        );
-
-      // Sends the response.
-      if (!mailbox) {
-        this.smtp_socket.write(
-          new SmtpResponse(
-            550,
-            Messages.vrfy.mailbox_unavailable(this),
-            new SmtpEnhancedStatusCode(5, 1, 2)
-          ).encode(true)
-        );
-        return;
-      }
-
-      this.smtp_socket.write(
-        new SmtpResponse(
-          250,
-          Messages.vrfy._(mailbox, this),
-          new SmtpEnhancedStatusCode(2, 1, 5)
-        ).encode(true)
-      );
-      return;
-    } else if (opening_bracket_index !== -1 || closing_bracket_index !== -1) {
-      throw new SyntaxError("Closing or opening bracket missing!");
-    }
-
-    // We're dealing with a name.
-    const mailboxes: SmtpMailbox[] =
-      await this.server.config.callbacks.verify_name(mailbox_or_name, this);
-
-    // Checks how to respond.
-    if (mailboxes.length === 0) {
-      this.smtp_socket.write(
-        new SmtpResponse(
-          550,
-          Messages.vrfy.mailbox_unavailable(this),
-          new SmtpEnhancedStatusCode(5, 1, 2)
-        ).encode(true)
-      );
-    } else if (mailboxes.length === 1) {
-      this.smtp_socket.write(
-        new SmtpResponse(
-          250,
-          Messages.vrfy._(mailboxes[0], this),
-          new SmtpEnhancedStatusCode(2, 1, 5)
-        ).encode(true)
-      );
-    } else {
-      this.smtp_socket.write(
-        new SmtpResponse(
-          550,
-          Messages.vrfy.ambiguous(mailbox_or_name, this),
-          new SmtpEnhancedStatusCode(5, 1, 4)
-        ).encode(true)
-      );
-    }
   }
 }

@@ -25,11 +25,11 @@ export enum SmtpCommandType {
 }
 
 export enum SmtpMailPrefix {
-  From = 'FROM',
+  From = "FROM",
 }
 
 export enum SmtpRcptPrefix {
-  To = 'TO',
+  To = "TO",
 }
 
 export class SmtpCommand {
@@ -68,29 +68,6 @@ export class SmtpCommand {
     return this.args as string | null;
   }
 
-  public encode(add_newline: boolean = false): string {
-    let arr: string[] = [];
-
-    arr.push(this.type);
-
-    if (this.args !== null) {
-      if (typeof this.args === "string") {
-        arr.push(this.args.trim());
-      } else {
-        this.args?.forEach((arg: string): void => {
-          arr.push(arg.trim());
-        });
-      }
-    }
-
-    let result: string = arr.join(SEGMENT_SEPARATOR);
-    if (add_newline) {
-      result += LINE_SEPARATOR;
-    }
-
-    return result;
-  }
-
   /**
    * Parses the given command.
    * @param raw the raw command.
@@ -116,5 +93,28 @@ export class SmtpCommand {
     }
 
     return new SmtpCommand(raw_type as SmtpCommandType, raw_args);
+  }
+
+  public encode(add_newline: boolean = false): string {
+    let arr: string[] = [];
+
+    arr.push(this.type);
+
+    if (this.args !== null) {
+      if (typeof this.args === "string") {
+        arr.push(this.args.trim());
+      } else {
+        this.args?.forEach((arg: string): void => {
+          arr.push(arg.trim());
+        });
+      }
+    }
+
+    let result: string = arr.join(SEGMENT_SEPARATOR);
+    if (add_newline) {
+      result += LINE_SEPARATOR;
+    }
+
+    return result;
   }
 }

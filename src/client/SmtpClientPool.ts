@@ -22,32 +22,9 @@ export declare interface SmtpClientPool {
 }
 
 export class SmtpClientPool extends EventEmitter {
-  protected _exchanges: SmtpMailExchanges;
-  protected _port: number;
-  protected _secure: boolean;
-
   protected _client_options?: SmtpClientOptions;
   protected _commander_options?: SmtpClientCommanderOptions;
   protected _logger?: winston.Logger;
-
-  protected _nodes: LinkedList<SmtpClientCommander> =
-    new LinkedList<SmtpClientCommander>();
-
-  public get exchanges(): SmtpMailExchanges {
-    return this._exchanges;
-  }
-
-  public get port(): number {
-    return this._port;
-  }
-
-  public get secure(): boolean {
-    return this._secure;
-  }
-
-  public get nodes(): LinkedList<SmtpClientCommander> {
-    return this._nodes;
-  }
 
   /**
    * Constructs a new SmtpClientPool with the given connect options.
@@ -83,27 +60,29 @@ export class SmtpClientPool extends EventEmitter {
     );
   }
 
-  /**
-   * Gets called when a commander emits the destroy event.
-   * @param commander the commander.
-   * @protected
-   */
-  protected _on_commander_destroy(commander: SmtpClientCommander): void {
-    // Removes the commander from the list, to prevent confusion.
-    this._nodes.remove(commander);
+  protected _exchanges: SmtpMailExchanges;
 
-    // Checks if there are assignments left in the queue, if not return.
-    if (commander.assignmentQueue.empty) {
-      return;
-    }
+  public get exchanges(): SmtpMailExchanges {
+    return this._exchanges;
+  }
 
-    // Enqueue all the remaining assignments to different commanders.
-    this._logger?.debug(
-      `Transferring unhandled assignments to new clients ...`
-    );
-    while (!commander.assignmentQueue.empty) {
-      this.assign(commander.assignmentQueue.dequeue());
-    }
+  protected _port: number;
+
+  public get port(): number {
+    return this._port;
+  }
+
+  protected _secure: boolean;
+
+  public get secure(): boolean {
+    return this._secure;
+  }
+
+  protected _nodes: LinkedList<SmtpClientCommander> =
+    new LinkedList<SmtpClientCommander>();
+
+  public get nodes(): LinkedList<SmtpClientCommander> {
+    return this._nodes;
   }
 
   /**
@@ -131,7 +110,10 @@ export class SmtpClientPool extends EventEmitter {
     );
 
     // Creates the client and gives it the options the callee has specified.
-    const client: SmtpClient = new SmtpClient(this._client_options, this._logger);
+    const client: SmtpClient = new SmtpClient(
+      this._client_options,
+      this._logger
+    );
 
     // Creates the commander for the client, and give it the callee specified
     //  options, since we don't have any ourselves.
@@ -151,5 +133,28 @@ export class SmtpClientPool extends EventEmitter {
       this._on_commander_destroy(commander)
     );
     client.connect(exchange.exchange, this._port, this._secure);
+  }
+
+  /**
+   * Gets called when a commander emits the destroy event.
+   * @param commander the commander.
+   * @protected
+   */
+  protected _on_commander_destroy(commander: SmtpClientCommander): void {
+    // Removes the commander from the list, to prevent confusion.
+    this._nodes.remove(commander);
+
+    // Checks if there are assignments left in the queue, if not return.
+    if (commander.assignmentQueue.empty) {
+      return;
+    }
+
+    // Enqueue all the remaining assignments to different commanders.
+    this._logger?.debug(
+      `Transferring unhandled assignments to new clients ...`
+    );
+    while (!commander.assignmentQueue.empty) {
+      this.assign(commander.assignmentQueue.dequeue());
+    }
   }
 }

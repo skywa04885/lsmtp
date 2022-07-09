@@ -39,26 +39,6 @@ export class SmtpCapability {
   ) {}
 
   /**
-   * Encodes the capability.
-   * @returns the encoded capability.
-   */
-  public encode(): string {
-    let arr: string[] = [];
-
-    arr.push(this.type);
-
-    if (this.args !== null) {
-      if (typeof this.args === "string") {
-        arr.push(this.args.trim());
-      } else {
-        arr = arr.concat(this.args);
-      }
-    }
-
-    return arr.join(SEGMENT_SEPARATOR);
-  }
-
-  /**
    * Decodes the given smtp capability.
    * @param raw the capability to decode.
    */
@@ -112,5 +92,25 @@ export class SmtpCapability {
     }
 
     return result;
+  }
+
+  /**
+   * Encodes the capability.
+   * @returns the encoded capability.
+   */
+  public encode(): string {
+    let arr: string[] = [];
+
+    arr.push(this.type);
+
+    if (this.args !== null) {
+      if (typeof this.args === "string") {
+        arr.push(this.args.trim());
+      } else {
+        arr = arr.concat(this.args);
+      }
+    }
+
+    return arr.join(SEGMENT_SEPARATOR);
   }
 }

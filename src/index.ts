@@ -34,23 +34,23 @@ import {
   SmtpServerMessageFromType,
 } from "./server/SmtpServerMessageFrom";
 import {
-  SmtpPolicyError,
-  SmtpSyntaxError,
   SmtpBadSequenceError,
   SmtpInvalidCommandError,
+  SmtpPolicyError,
+  SmtpSyntaxError,
 } from "./shared/SmtpError";
 import {
-  SmtpClientCommanderAssignmentState,
-  SmtpClientCommanderStreamAssignment,
-  SmtpClientCommanderBufferAssignment,
   SmtpClientCommanderAssignment,
+  SmtpClientCommanderAssignmentState,
+  SmtpClientCommanderBufferAssignment,
+  SmtpClientCommanderStreamAssignment,
 } from "./client/SmtpClientCommanderAssignment";
 import {
   SmtpClientCommanderError,
-  SmtpClientCommanderTransactionError,
-  SmtpClientCommanderNetworkingError,
   SmtpClientCommanderErrors,
+  SmtpClientCommanderNetworkingError,
   SmtpClientCommanderNetworkingErrorOrigin,
+  SmtpClientCommanderTransactionError,
 } from "./client/SmtpClientCommanderErrors";
 
 export {

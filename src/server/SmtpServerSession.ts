@@ -18,10 +18,10 @@ export enum SmtpServerSessionFlag {
 }
 
 export enum SmtpServerSessionType {
-  SMTP = 'SMTP',
-  SMTPS = 'SMTPS',
-  ESMTP = 'ESMTP',
-  ESMTPS = 'ESMTPS',
+  SMTP = "SMTP",
+  SMTPS = "SMTPS",
+  ESMTP = "ESMTP",
+  ESMTPS = "ESMTPS",
 }
 
 export class SmtpServerSession {

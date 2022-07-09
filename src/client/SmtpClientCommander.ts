@@ -3,10 +3,10 @@
 */
 
 import EventEmitter from "events";
-import { Flags, Queue } from "llibdatastructures";
-import { SmtpCapability } from "../shared/SmtpCapability";
-import { SmtpResponse } from "../shared/SmtpResponse";
-import { SmtpClient } from "./SmtpClient";
+import {Flags, Queue} from "llibdatastructures";
+import {SmtpCapability} from "../shared/SmtpCapability";
+import {SmtpResponse} from "../shared/SmtpResponse";
+import {SmtpClient} from "./SmtpClient";
 import {
   smtp_client_server_opts_from_capabilities,
   smtp_commander_server_opts_flags_string,
@@ -18,8 +18,8 @@ import {
   SmtpClientCommanderBufferAssignment,
   SmtpClientCommanderStreamAssignment,
 } from "./SmtpClientCommanderAssignment";
-import { DotEscapeEncodeStream } from "llibencoding";
-import { Readable } from "stream";
+import {DotEscapeEncodeStream} from "llibencoding";
+import {Readable} from "stream";
 import winston from "winston";
 import {
   SmtpClientCommanderError,
@@ -27,8 +27,8 @@ import {
   SmtpClientCommanderNetworkingErrorOrigin,
   SmtpClientCommanderTransactionError,
 } from "./SmtpClientCommanderErrors";
-import { SmtpCommand } from "../shared/SmtpCommand";
-import { EmailAddress } from "llibemailaddress";
+import {SmtpCommand} from "../shared/SmtpCommand";
+import {EmailAddress} from "llibemailaddress";
 
 export enum SmtpCommanderFlag {
   IS_ESMTP = 1 << 0, // The server is an ESMTP server.
@@ -51,19 +51,12 @@ export interface SmtpClientCommanderOptions {
 }
 
 export class SmtpClientCommander extends EventEmitter {
-  protected _serverDomain: string;
   protected _noopInterval: number;
-  protected _maxAssignments: number;
-
   protected _smtpClient: SmtpClient;
   protected _logger?: winston.Logger;
   protected _flags: Flags;
   protected _serverOptions?: SmtpCommanderServerOpts;
   protected _timerReference?: NodeJS.Timeout;
-  protected _assignmentQueue: Queue<SmtpClientCommanderAssignment>;
-  protected _totalEnqueuedAssignments: number;
-  protected _totalExecutedAssignments: number;
-
   protected _activeAssignmentFailedRecipients?: number;
   protected _activeAssignment: SmtpClientCommanderAssignment | null;
 
@@ -104,6 +97,56 @@ export class SmtpClientCommander extends EventEmitter {
     );
   }
 
+  protected _serverDomain: string;
+
+  public get serverDomain(): string {
+    return this._serverDomain;
+  }
+
+  protected _maxAssignments: number;
+
+  /**
+   * Gets the max number of assignments.
+   */
+  public get maxAssignments(): number {
+    return this._maxAssignments;
+  }
+
+  protected _assignmentQueue: Queue<SmtpClientCommanderAssignment>;
+
+  /**
+   * Gets the assignment queue.
+   */
+  public get assignmentQueue(): Queue<SmtpClientCommanderAssignment> {
+    return this._assignmentQueue;
+  }
+
+  ////////////////////////////////////////////////
+  // Getters.
+  ////////////////////////////////////////////////
+
+  protected _totalEnqueuedAssignments: number;
+
+  /**
+   * Gets the number of total enqueued assignments.
+   */
+  public get totalEnqueuedAssignments(): number {
+    return this._totalEnqueuedAssignments;
+  }
+
+  protected _totalExecutedAssignments: number;
+
+  public get totalExecutedAssignments(): number {
+    return this._totalExecutedAssignments;
+  }
+
+  /**
+   * Checks if we've reached the max number of assignments.
+   */
+  public get max_assignments_reached(): boolean {
+    return this._totalEnqueuedAssignments >= this._maxAssignments;
+  }
+
   /**
    * Assigns a new assignment to the commander.
    * @param assignment the assignment.
@@ -137,46 +180,6 @@ export class SmtpClientCommander extends EventEmitter {
       // Starts the transaction.
       this._beginTransaction(this._assignmentQueue.peek());
     }
-  }
-
-  ////////////////////////////////////////////////
-  // Getters.
-  ////////////////////////////////////////////////
-
-  /**
-   * Checks if we've reached the max number of assignments.
-   */
-  public get max_assignments_reached(): boolean {
-    return this._totalEnqueuedAssignments >= this._maxAssignments;
-  }
-
-  /**
-   * Gets the assignment queue.
-   */
-  public get assignmentQueue(): Queue<SmtpClientCommanderAssignment> {
-    return this._assignmentQueue;
-  }
-
-  /**
-   * Gets the number of total enqueued assignments.
-   */
-  public get totalEnqueuedAssignments(): number {
-    return this._totalEnqueuedAssignments;
-  }
-
-  /**
-   * Gets the max number of assignments.
-   */
-  public get maxAssignments(): number {
-    return this._maxAssignments;
-  }
-
-  public get serverDomain(): string {
-    return this._serverDomain;
-  }
-
-  public get totalExecutedAssignments(): number {
-    return this._totalExecutedAssignments;
   }
 
   ////////////////////////////////////////////////
@@ -401,14 +404,13 @@ export class SmtpClientCommander extends EventEmitter {
     this._logger?.debug(`Received RSET Response, beginning transaction ...`);
 
     if (response.status !== 250) {
-      this._giveUp(
+      return this._giveUp(
         new SmtpClientCommanderTransactionError(
           command,
           response,
           `Expected Status-Code: 250`
         )
       );
-      return;
     }
 
     this._transactionSendFrom();
@@ -442,14 +444,13 @@ export class SmtpClientCommander extends EventEmitter {
     );
 
     if (response.status !== 250) {
-      this._giveUp(
+      return this._giveUp(
         new SmtpClientCommanderTransactionError(
           command,
           response,
           `Expected Status-Code: 250`
         )
       );
-      return;
     }
 
     // Bootstraps the RCPT to sequence, by default the index will be zero, but this will increase
@@ -514,14 +515,13 @@ export class SmtpClientCommander extends EventEmitter {
         this._activeAssignmentFailedRecipients ===
         this._activeAssignment!.to.length
       ) {
-        this._giveUp(
+        return this._giveUp(
           new SmtpClientCommanderError(
             `${this._activeAssignment!.to.length}/${
               this._activeAssignment!.to.length
             } recipients failed, could not send email.`
           )
         );
-        return;
       }
     }
 

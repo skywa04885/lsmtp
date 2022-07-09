@@ -1,8 +1,8 @@
-import {EmailAddress} from "llibemailaddress";
+import { EmailAddress } from "llibemailaddress";
 
 export enum SmtpServerMessageFromType {
-  Remote = 'REMOTE',
-  Local = 'LOCAL',
+  Remote = "REMOTE",
+  Local = "LOCAL",
 }
 
 export class SmtpServerMessageFrom {
@@ -12,8 +12,8 @@ export class SmtpServerMessageFrom {
    * @param email the E-Mail address.
    */
   public constructor(
-    public readonly type: SmtpServerMessageFromType,
-    public readonly email: EmailAddress
+    public type: SmtpServerMessageFromType,
+    public email: EmailAddress
   ) {}
 
   /**

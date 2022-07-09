@@ -1,5 +1,6 @@
 import {
   SmtpClientCommanderAssignment,
+  SmtpClientCommanderBufferAssignment,
   SmtpClientCommanderStreamAssignment,
 } from "./SmtpClientCommanderAssignment";
 import { SmtpClientPool, SmtpClientPoolOptions } from "./SmtpClientPool";
@@ -10,11 +11,23 @@ import { EmailAddress } from "llibemailaddress";
 import { Readable } from "stream";
 import {
   SmtpClientCommanderError,
+  SmtpClientCommanderErrors,
   SmtpClientCommanderNetworkingError,
   SmtpClientCommanderNetworkingErrorOrigin,
 } from "./SmtpClientCommanderErrors";
 
 export type SmtpClientManagerAssignmentCallback = () => void;
+
+/////////////////////////////////////////////
+// Manager Assignment Error
+/////////////////////////////////////////////
+
+export class SmtpClientManagerAssignmentError {
+  public constructor(
+    public readonly effectedRecipients: EmailAddress[],
+    public readonly errors: SmtpClientCommanderErrors
+  ) {}
+}
 
 /////////////////////////////////////////////
 // Assignment Base Class
@@ -23,22 +36,13 @@ export type SmtpClientManagerAssignmentCallback = () => void;
 export class SmtpClientManagerAssignment {
   protected _inProgressAssignments: LinkedList<SmtpClientCommanderAssignment> =
     new LinkedList<SmtpClientCommanderAssignment>();
+  protected _errors: SmtpClientManagerAssignmentError[];
 
   /**
-   * Builds the assignment, implemented by child classes.
-   * @param domain the domain of the server.
-   * @param from where it's sent from.
-   * @param to the addresses to send to, overrides current ones.
-   * @param cb the callback to call once done.
-   * @protected
+   * Gets the errors.
    */
-  protected _buildAssignment(
-    domain: string,
-    from: EmailAddress,
-    to: EmailAddress[],
-    cb: () => void
-  ): SmtpClientCommanderAssignment {
-    throw new Error("Not implemented!");
+  public get errors(): SmtpClientManagerAssignmentError[] {
+    return this._errors;
   }
 
   /**
@@ -51,7 +55,27 @@ export class SmtpClientManagerAssignment {
     public readonly to: EmailAddress[],
     public readonly from: EmailAddress,
     public readonly callback: SmtpClientManagerAssignmentCallback
-  ) {}
+  ) {
+    this._errors = [];
+  }
+
+  /**
+   * Gets the map of hostnames related to each address, will be used to assign to each pool.
+   * @protected
+   */
+  protected get domain_address_map(): { [key: string]: EmailAddress[] } {
+    let map: { [key: string]: EmailAddress[] } = {};
+
+    this.to.forEach((to: EmailAddress): void => {
+      if (!map[to.hostname]) {
+        map[to.hostname] = [];
+      }
+
+      map[to.hostname].push(to);
+    });
+
+    return map;
+  }
 
   /**
    * Prepares all the assignments and pushes them into the queue.
@@ -83,21 +107,50 @@ export class SmtpClientManagerAssignment {
   }
 
   /**
-   * Gets the map of hostnames related to each address, will be used to assign to each pool.
+   * Gets called when an assignment went wrong before actual assignment.
+   * @param assignment the assignment that had a pre transition error.
+   * @param error the error.
+   * @returns nothing.
+   */
+  public onError(
+    assignment: SmtpClientCommanderAssignment,
+    error: SmtpClientCommanderError
+  ): void {
+    // Removes the assignment from the in progress assignments.
+    this._inProgressAssignments.remove(assignment);
+
+    // Pushes the given error.
+    assignment.errors.push(error);
+
+    // Inserts the error into the final errors.
+    this._errors.push(
+      new SmtpClientManagerAssignmentError(assignment.to, assignment.errors)
+    );
+
+    // Checks if the manager assignment is done.
+    if (!this._inProgressAssignments.empty) {
+      return;
+    }
+
+    // The assignment is completed, call the callback.
+    this.callback();
+  }
+
+  /**
+   * Builds the assignment, implemented by child classes.
+   * @param domain the domain of the server.
+   * @param from where it's sent from.
+   * @param to the addresses to send to, overrides current ones.
+   * @param cb the callback to call once done.
    * @protected
    */
-  protected get domain_address_map(): { [key: string]: EmailAddress[] } {
-    let map: { [key: string]: EmailAddress[] } = {};
-
-    this.to.forEach((to: EmailAddress): void => {
-      if (!map[to.hostname]) {
-        map[to.hostname] = [];
-      }
-
-      map[to.hostname].push(to);
-    });
-
-    return map;
+  protected _buildAssignment(
+    domain: string,
+    from: EmailAddress,
+    to: EmailAddress[],
+    cb: () => void
+  ): SmtpClientCommanderAssignment {
+    throw new Error("Not implemented!");
   }
 
   /**
@@ -111,30 +164,13 @@ export class SmtpClientManagerAssignment {
     // Removes the assignment from the in progress assignments.
     this._inProgressAssignments.remove(assignment);
 
-    // Checks if the manager assignment is done.
-    if (!this._inProgressAssignments.empty) {
-      return;
+    // Checks if the assignment had errors, if so push the errors
+    //  to the manager assignment errors array.
+    if (assignment.errors.size > 0) {
+      this._errors.push(
+        new SmtpClientManagerAssignmentError(assignment.to, assignment.errors)
+      );
     }
-
-    // The assignment is completed, call the callback.
-    this.callback();
-  }
-
-  /**
-   * Gets called when an assignment went wrong before actual assignment.
-   * @param assignment the assignment that had a pre transition error.
-   * @param error the error.
-   * @returns nothing.
-   */
-  public onError(
-    assignment: SmtpClientCommanderAssignment,
-    error: SmtpClientCommanderError
-  ): void {
-    // Removes the assignment from the in progress assignments.
-    this._inProgressAssignments.remove(assignment);
-
-    // Pushes the result.
-    assignment.errors.push(error);
 
     // Checks if the manager assignment is done.
     if (!this._inProgressAssignments.empty) {
@@ -211,6 +247,29 @@ export class SmtpClientManagerBufferAssignment extends SmtpClientManagerAssignme
   ) {
     super(to, from, callback);
   }
+
+  /**
+   * Builds the assignment, implemented by child classes.
+   * @param domain the domain of the server.
+   * @param from where it's sent from.
+   * @param to the addresses to send to, overrides current ones.
+   * @param cb the callback to call once done.
+   * @protected
+   */
+  protected _buildAssignment(
+    domain: string,
+    from: EmailAddress,
+    to: EmailAddress[],
+    cb: () => void
+  ): SmtpClientCommanderAssignment {
+    return new SmtpClientCommanderBufferAssignment(
+      this.buffer,
+      domain,
+      from,
+      to,
+      cb
+    );
+  }
 }
 
 /////////////////////////////////////////////
@@ -232,13 +291,6 @@ export class SmtpClientManager {
   protected _logger?: winston.Logger;
 
   /**
-   * Gets all the pools.
-   */
-  public get pools(): { [key: string]: SmtpClientPool } {
-    return this._map;
-  }
-
-  /**
    * Creates a new SmtpClientManager instance.
    * @param options the options.
    * @param logger the winston logger.
@@ -251,6 +303,40 @@ export class SmtpClientManager {
     this._port = options.port ?? 25;
     this._secure = options.secure ?? false;
     this._logger = logger;
+  }
+
+  /**
+   * Gets all the pools.
+   */
+  public get pools(): { [key: string]: SmtpClientPool } {
+    return this._map;
+  }
+
+  /**
+   * Assigns the given manager assignment to the pools.
+   * @param man_assignment the assignments.
+   */
+  public async assign(
+    man_assignment: SmtpClientManagerAssignment
+  ): Promise<void> {
+    // Gets all the client assignments from the manager assignment.
+    const assignments: SmtpClientCommanderAssignment[] =
+      man_assignment.prepareClientAssignments();
+
+    // Attempts to assign all the assignments to pools.
+    for (const assignment of assignments) {
+      try {
+        await this._assignToPool(assignment);
+      } catch (e) {
+        man_assignment.onError(
+          assignment,
+          new SmtpClientCommanderNetworkingError(
+            SmtpClientCommanderNetworkingErrorOrigin.Other,
+            (e as Error).message
+          )
+        );
+      }
+    }
   }
 
   /**
@@ -292,32 +378,5 @@ export class SmtpClientManager {
   ): Promise<void> {
     const pool: SmtpClientPool = await this._getOrCreatePool(assignment.domain);
     pool.assign(assignment);
-  }
-
-  /**
-   * Assigns the given manager assignment to the pools.
-   * @param man_assignment the assignments.
-   */
-  public async assign(
-    man_assignment: SmtpClientManagerAssignment
-  ): Promise<void> {
-    // Gets all the client assignments from the manager assignment.
-    const assignments: SmtpClientCommanderAssignment[] =
-      man_assignment.prepareClientAssignments();
-
-    // Attempts to assign all the assignments to pools.
-    for (const assignment of assignments) {
-      try {
-        await this._assignToPool(assignment);
-      } catch (e) {
-        man_assignment.onError(
-          assignment,
-          new SmtpClientCommanderNetworkingError(
-            SmtpClientCommanderNetworkingErrorOrigin.Other,
-            (e as Error).message
-          )
-        );
-      }
-    }
   }
 }

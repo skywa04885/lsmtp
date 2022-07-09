@@ -37,6 +37,24 @@ export class SmtpEnhancedStatusCode {
   ) {}
 
   /**
+   * Decodes the raw string.
+   * @param raw the raw string.
+   * @returns the parsed status code.
+   */
+  public static decode(raw: string): SmtpEnhancedStatusCode {
+    const segments: string[] = raw.split(".");
+    if (segments.length !== 3) {
+      throw new Error("Invalid enhanced status code.");
+    }
+
+    return new SmtpEnhancedStatusCode(
+      parseInt(segments[0]),
+      parseInt(segments[1]),
+      parseInt(segments[2])
+    );
+  }
+
+  /**
    * Adds two status codes.
    * @param other the other.
    * @returns the other added to the current.
@@ -56,24 +74,6 @@ export class SmtpEnhancedStatusCode {
   public encode(): string {
     return `${this.a}.${this.b}.${this.c}`;
   }
-
-  /**
-   * Decodes the raw string.
-   * @param raw the raw string.
-   * @returns the parsed status code.
-   */
-  public static decode(raw: string): SmtpEnhancedStatusCode {
-    const segments: string[] = raw.split(".");
-    if (segments.length !== 3) {
-      throw new Error("Invalid enhanced status code.");
-    }
-
-    return new SmtpEnhancedStatusCode(
-      parseInt(segments[0]),
-      parseInt(segments[1]),
-      parseInt(segments[2])
-    );
-  }
 }
 
 export class SmtpResponse {
@@ -82,34 +82,6 @@ export class SmtpResponse {
     public readonly message: string | string[] | null = null,
     public readonly enhanced_status_code: SmtpEnhancedStatusCode | null = null
   ) {}
-
-  public encode(add_newline: boolean = true): string {
-    let arr: string[] = [];
-
-    arr.push(this.status.toString());
-
-    if (this.enhanced_status_code !== null) {
-      arr.push(this.enhanced_status_code.encode());
-    }
-
-    if (this.message !== null) {
-      if (typeof this.message === "string") {
-        arr.push(this.message.trim());
-      } else {
-        for (const message_item of this.message) {
-          arr.push(message_item.trim());
-        }
-      }
-    }
-
-    let result: string = arr.join(SEGMENT_SEPARATOR);
-
-    if (add_newline) {
-      result += LINE_SEPARATOR;
-    }
-
-    return result;
-  }
 
   /**
    * Gets the message in string format.
@@ -175,5 +147,33 @@ export class SmtpResponse {
 
     // Returns the result.
     return new SmtpResponse(status, message);
+  }
+
+  public encode(add_newline: boolean = true): string {
+    let arr: string[] = [];
+
+    arr.push(this.status.toString());
+
+    if (this.enhanced_status_code !== null) {
+      arr.push(this.enhanced_status_code.encode());
+    }
+
+    if (this.message !== null) {
+      if (typeof this.message === "string") {
+        arr.push(this.message.trim());
+      } else {
+        for (const message_item of this.message) {
+          arr.push(message_item.trim());
+        }
+      }
+    }
+
+    let result: string = arr.join(SEGMENT_SEPARATOR);
+
+    if (add_newline) {
+      result += LINE_SEPARATOR;
+    }
+
+    return result;
   }
 }

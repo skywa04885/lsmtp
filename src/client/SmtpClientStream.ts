@@ -1,7 +1,7 @@
-import {Writable, WritableOptions} from "stream";
-import {LINE_SEPARATOR} from "../shared/SmtpConstants";
-import {SmtpResponse} from "../shared/SmtpResponse";
-import {SmtpDataBuffer} from "../shared/SmtpSegmentedReader";
+import { Writable, WritableOptions } from "stream";
+import { LINE_SEPARATOR } from "../shared/SmtpConstants";
+import { SmtpResponse } from "../shared/SmtpResponse";
+import { SmtpDataBuffer } from "../shared/SmtpSegmentedReader";
 
 export enum SmtpClientStreamMode {
   Response = "RESPONSE",
@@ -10,9 +10,7 @@ export enum SmtpClientStreamMode {
 export class SmtpClientStream extends Writable {
   protected _buffer: SmtpDataBuffer = new SmtpDataBuffer();
   protected _mode: SmtpClientStreamMode = SmtpClientStreamMode.Response;
-  protected _responseDecodeState: Generator<void,
-    SmtpResponse,
-    string> | null;
+  protected _responseDecodeState: Generator<void, SmtpResponse, string> | null;
 
   /**
    * Constructs a new SMTP client stream.

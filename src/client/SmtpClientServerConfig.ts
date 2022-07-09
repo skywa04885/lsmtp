@@ -1,10 +1,5 @@
 import { Flags } from "llibdatastructures";
-import { SmtpServerFeatureFlag } from "../server/SmtpServerConfig";
 import { SmtpCapability, SmtpCapabilityType } from "../shared/SmtpCapability";
-import {
-  SmtpClientErrorOrigin,
-  SmtpClientFatalTransactionError,
-} from "./SmtpClientError";
 
 export enum SmtpCommanderServerFeatures {
   Pipelining = 1 << 0,
@@ -79,9 +74,8 @@ export function smtp_client_server_opts_from_capabilities(
           result.max_message_size = parseInt(args[0]);
         } else {
           throw new Error("Invalid SIZE capability.");
-
         }
-        
+
         break;
       }
       default:

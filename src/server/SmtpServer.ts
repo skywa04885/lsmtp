@@ -9,9 +9,9 @@ import { SmtpServerConnection } from "./SmtpServerConnection";
 import { SmtpServerSession } from "./SmtpServerSession";
 
 export class SmtpServer extends EventEmitter {
+  public capabilities: SmtpCapability[] = [];
   protected plain_server: net.Server | null;
   protected secure_server: tls.Server | null;
-  public capabilities: SmtpCapability[] = [];
 
   /**
    * Constructs a new SmtpServer.
